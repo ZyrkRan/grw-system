@@ -231,7 +231,7 @@ export default function DashboardPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-none">
-                        {activity.customer.name}
+                        {activity.customer?.name ?? "Unknown"}
                       </p>
                       <p className="text-muted-foreground mt-1 text-xs">
                         {activity.serviceName} &middot;{" "}

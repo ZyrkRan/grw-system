@@ -204,7 +204,7 @@ export async function GET() {
           status: log.status,
           paymentStatus: log.paymentStatus,
           priceCharged: Number(log.priceCharged),
-          customerName: log.customer.name,
+          customer: { name: log.customer?.name ?? "Unknown" },
           createdAt: log.createdAt,
         })),
         monthlyRevenue: monthlyRevenueRaw,
