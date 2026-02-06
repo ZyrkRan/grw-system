@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum ServiceStatus {
+  PENDING
+  COMPLETE
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  CANCELLED
+}
+
+enum PlaidItemStatus {
+  ACTIVE
+  ERROR
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT
+}
+
+enum TransactionType {
+  INFLOW
+  OUTFLOW
+}
+
+// ─── User ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  password      String
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  customers           Customer[]
+  serviceTypes        ServiceType[]
+  serviceLogs         ServiceLog[]
+  invoices            Invoice[]
+  plaidItems          PlaidItem[]
+  bankAccounts        BankAccount[]
+  bankTransactions    BankTransaction[]
+  transactionCategories TransactionCategory[]
+  categorizationRules CategorizationRule[]
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+
+model Settings {
+  id             Int      @id @default(autoincrement())
+  companyName    String?
+  companyAddress String?
+  companyCity    String?
+  companyState   String?
+  companyZip     String?
+  companyPhone   String?
+  companyEmail   String?
+  companyWebsite String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ─── Customer ────────────────────────────────────────────────────────────────
+
+model Customer {
+  id              Int      @id @default(autoincrement())
+  name            String
+  phone           String
+  email           String?
+  address         String
+  serviceInterval Int?
+  userId          String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id])
+  serviceLogs ServiceLog[]
+  invoices    Invoice[]
+}
+
+// ─── ServiceType ─────────────────────────────────────────────────────────────
+
+model ServiceType {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String
+  description String?
+  color       String?
+  icon        String?
+  position    Int
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id])
+  serviceLogs ServiceLog[]
+}
+
+// ─── ServiceLog ──────────────────────────────────────────────────────────────
+
+model ServiceLog {
+  id                   Int           @id @default(autoincrement())
+  customerId           Int
+  serviceName          String
+  serviceDate          DateTime
+  priceCharged         Decimal       @db.Decimal(10, 2)
+  notes                String?
+  status               ServiceStatus @default(PENDING)
+  paymentStatus        PaymentStatus @default(UNPAID)
+  amountPaid           Decimal       @db.Decimal(10, 2) @default(0)
+  paymentDate          DateTime?
+  serviceTypeId        Int?
+  totalDurationMinutes Int?
+  userId               String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  customer         Customer          @relation(fields: [customerId], references: [id])
+  serviceType      ServiceType?      @relation(fields: [serviceTypeId], references: [id])
+  user             User?             @relation(fields: [userId], references: [id])
+  timeEntries      TimeEntry[]
+  bankTransactions BankTransaction[]
+  invoiceItems     InvoiceItem[]
+}
+
+// ─── TimeEntry ───────────────────────────────────────────────────────────────
+
+model TimeEntry {
+  id              Int      @id @default(autoincrement())
+  serviceLogId    Int
+  date            DateTime
+  durationMinutes Int
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  serviceLog ServiceLog @relation(fields: [serviceLogId], references: [id])
+}
+
+// ─── Invoice ─────────────────────────────────────────────────────────────────
+
+model Invoice {
+  id            Int           @id @default(autoincrement())
+  invoiceNumber String        @unique
+  customerId    Int
+  issueDate     DateTime
+  dueDate       DateTime?
+  status        InvoiceStatus @default(DRAFT)
+  subtotal      Decimal       @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+  amountPaid    Decimal       @db.Decimal(10, 2) @default(0)
+  notes         String?
+  terms         String?
+  serviceTypeId Int?
+  userId        String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  customer Customer      @relation(fields: [customerId], references: [id])
+  user     User          @relation(fields: [userId], references: [id])
+  items    InvoiceItem[]
+}
+
+// ─── InvoiceItem ─────────────────────────────────────────────────────────────
+
+model InvoiceItem {
+  id           Int      @id @default(autoincrement())
+  invoiceId    Int
+  serviceLogId Int?
+  description  String
+  serviceDate  DateTime
+  quantity     Decimal  @db.Decimal(10, 2)
+  rate         Decimal  @db.Decimal(10, 2)
+  amount       Decimal  @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+
+  invoice    Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceLog ServiceLog? @relation(fields: [serviceLogId], references: [id])
+}
+
+// ─── PlaidItem ───────────────────────────────────────────────────────────────
+
+model PlaidItem {
+  id               String          @id @default(cuid())
+  userId           String
+  itemId           String          @unique
+  accessToken      String
+  institutionId    String?
+  institutionName  String?
+  webhookUrl       String?
+  consentExpiresAt DateTime?
+  status           PlaidItemStatus @default(ACTIVE)
+  lastError        String?
+  lastSuccessfulSync DateTime?
+  cursor           String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id])
+  bankAccounts BankAccount[]
+}
+
+// ─── BankAccount ─────────────────────────────────────────────────────────────
+
+model BankAccount {
+  id             Int         @id @default(autoincrement())
+  name           String
+  accountNumber  String?
+  type           AccountType
+  isActive       Boolean     @default(true)
+  userId         String
+  lastSyncedAt   DateTime?
+  mask           String?
+  officialName   String?
+  plaidAccountId String?
+  plaidItemId    String?
+  subtype        String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  plaidItem    PlaidItem?        @relation(fields: [plaidItemId], references: [id])
+  user         User              @relation(fields: [userId], references: [id])
+  transactions BankTransaction[]
+}
+
+// ─── BankTransaction ─────────────────────────────────────────────────────────
+
+model BankTransaction {
+  id                 Int             @id @default(autoincrement())
+  date               DateTime
+  description        String
+  amount             Decimal         @db.Decimal(10, 2)
+  balance            Decimal?        @db.Decimal(10, 2)
+  type               TransactionType
+  notes              String?
+  serviceLogId       Int?
+  statementMonth     Int
+  statementYear      Int
+  accountId          Int
+  userId             String
+  isPending          Boolean         @default(false)
+  merchantName       String?
+  plaidStatus        String?
+  plaidTransactionId String?         @unique
+  rawPlaidData       Json?
+  categoryId         Int?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  account    BankAccount          @relation(fields: [accountId], references: [id])
+  serviceLog ServiceLog?          @relation(fields: [serviceLogId], references: [id])
+  category   TransactionCategory? @relation(fields: [categoryId], references: [id])
+  user       User                 @relation(fields: [userId], references: [id])
+}
+
+// ─── TransactionCategory ─────────────────────────────────────────────────────
+
+model TransactionCategory {
+  id        Int      @id @default(autoincrement())
+  userId    String?
+  name      String
+  slug      String
+  color     String
+  isDefault Boolean  @default(false)
+  position  Int      @default(0)
+  parentId  Int?
+  isGroup   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions        BankTransaction[]
+  categorizationRules CategorizationRule[]
+  children            TransactionCategory[] @relation("CategoryParent")
+  parent              TransactionCategory?  @relation("CategoryParent", fields: [parentId], references: [id])
+  user                User?                 @relation(fields: [userId], references: [id])
+}
+
+// ─── CategorizationRule ──────────────────────────────────────────────────────
+
+model CategorizationRule {
+  id         Int      @id @default(autoincrement())
+  userId     String
+  pattern    String
+  categoryId Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User                @relation(fields: [userId], references: [id])
+  category TransactionCategory @relation(fields: [categoryId], references: [id])
+}
