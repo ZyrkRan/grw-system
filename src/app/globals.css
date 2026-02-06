@@ -123,3 +123,35 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Print styles for invoice detail page */
+@media print {
+  /* Hide sidebar, header, and navigation */
+  [data-sidebar],
+  header,
+  nav,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Remove sidebar inset styles */
+  [data-sidebar-inset] {
+    margin-left: 0 !important;
+    min-height: auto !important;
+  }
+
+  /* Clean up the main content area */
+  main {
+    padding: 0 !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Ensure tables don't break across pages */
+  table {
+    page-break-inside: avoid;
+  }
+}
