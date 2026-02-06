@@ -8,16 +8,20 @@ Follow the phased build plan in `plans/build-plan.md`. Each phase should be comm
 
 ## Agent Usage (REQUIRED)
 
-Always use the appropriate specialized agent for the task at hand:
+Always use the appropriate specialized agent for the task at hand. **Run agents in parallel when their work is independent.**
 
 ### nextjs-fullstack-builder
-Use for ALL implementation work including:
+Use for frontend/UI implementation:
 - Creating/modifying pages, components, and layouts
-- Building API routes (route.ts files)
 - Prisma schema changes and database work
 - shadcn/ui component integration
-- n8n webhook integrations
 - Bug fixes in application code
+
+### nextjs-api-builder
+Use for backend/API implementation (runs in parallel with nextjs-fullstack-builder):
+- Building API routes (route.ts files)
+- API route logic, validation, and error handling
+- n8n webhook endpoints
 
 ### auto-commit-manager
 Use after completing each phase or meaningful unit of work to:
@@ -42,9 +46,9 @@ Use for:
 - Installing packages (`npx shadcn@latest add ...`, `npm install ...`)
 - Any terminal commands
 
-## Workflow Pattern
+## Workflow Pattern (Parallel)
 1. Use **Plan** or **Explore** agents to understand what needs to be built
-2. Use **nextjs-fullstack-builder** agent to implement the code
+2. Launch **nextjs-fullstack-builder** (pages/components) and **nextjs-api-builder** (API routes) **in parallel**
 3. Use **Bash** to run prisma generate, build checks, etc.
 4. Use **auto-commit-manager** agent to commit with the specified message
 
