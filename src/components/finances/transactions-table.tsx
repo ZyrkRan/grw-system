@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Plus,
   MoreHorizontal,
@@ -93,8 +93,10 @@ export function TransactionsTable() {
     Transaction | undefined
   >(undefined)
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null)
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Transaction[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
+  const bulkClearRef = useRef<(() => void) | null>(null)
 
   // Quick category assign
   const [categoryAssignTarget, setCategoryAssignTarget] =
@@ -163,28 +165,39 @@ export function TransactionsTable() {
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return
+    const targets = bulkDeleteTargets.length > 0 ? bulkDeleteTargets : deleteTarget ? [deleteTarget] : []
+    if (targets.length === 0) return
     setIsDeleting(true)
     setDeleteError("")
 
     try {
-      const res = await fetch(
-        `/api/finances/transactions/${deleteTarget.id}`,
-        { method: "DELETE" }
+      const results = await Promise.all(
+        targets.map((txn) =>
+          fetch(`/api/finances/transactions/${txn.id}`, { method: "DELETE" }).then((r) => r.json())
+        )
       )
-      const result = await res.json()
 
-      if (result.success) {
-        setDeleteTarget(null)
-        fetchTransactions()
+      const failed = results.filter((r) => !r.success)
+      if (failed.length > 0) {
+        setDeleteError(`Failed to delete ${failed.length} transaction(s).`)
       } else {
-        setDeleteError(result.error || "Failed to delete transaction.")
+        setDeleteTarget(null)
+        setBulkDeleteTargets([])
+        bulkClearRef.current?.()
+        bulkClearRef.current = null
+        fetchTransactions()
       }
     } catch {
-      setDeleteError("Failed to delete transaction. Please try again.")
+      setDeleteError("Failed to delete. Please try again.")
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  function handleBulkDelete(selected: Transaction[], clearSelection: () => void) {
+    setBulkDeleteTargets(selected)
+    bulkClearRef.current = clearSelection
+    setDeleteError("")
   }
 
   function handleCategoryAssignClick(transaction: Transaction) {
@@ -388,6 +401,22 @@ export function TransactionsTable() {
           rowKey="id"
           searchable
           searchPlaceholder="Search by description or merchant..."
+          selectable
+          renderBulkActions={(selected, clearSelection) => {
+            const deletable = selected.filter((txn) => !txn.plaidTransactionId)
+            return (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                disabled={deletable.length === 0}
+                onClick={() => handleBulkDelete(deletable, clearSelection)}
+              >
+                <Trash2 className="size-4" />
+                Delete ({deletable.length})
+              </Button>
+            )
+          }}
           emptyMessage="No transactions yet. Click 'Add Transaction' or connect a bank account to get started."
         />
       )}
@@ -459,18 +488,35 @@ export function TransactionsTable() {
 
       {/* Delete Confirmation */}
       <Dialog
-        open={!!deleteTarget}
+        open={!!deleteTarget || bulkDeleteTargets.length > 0}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open) {
+            setDeleteTarget(null)
+            setBulkDeleteTargets([])
+          }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogTitle>
+              {bulkDeleteTargets.length > 1
+                ? `Delete ${bulkDeleteTargets.length} Transactions`
+                : "Delete Transaction"}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the transaction{" "}
-              <strong>{deleteTarget?.description}</strong>? This action cannot be
-              undone.
+              {bulkDeleteTargets.length > 1 ? (
+                <>
+                  Are you sure you want to delete{" "}
+                  <strong>{bulkDeleteTargets.length} transactions</strong>? This
+                  action cannot be undone.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete the transaction{" "}
+                  <strong>{deleteTarget?.description}</strong>? This action
+                  cannot be undone.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           {deleteError && (
@@ -481,7 +527,10 @@ export function TransactionsTable() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteTarget(null)}
+              onClick={() => {
+                setDeleteTarget(null)
+                setBulkDeleteTargets([])
+              }}
               disabled={isDeleting}
             >
               Cancel

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   Plus,
@@ -96,8 +96,10 @@ export default function InvoicesPage() {
     undefined
   )
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Invoice[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
+  const bulkClearRef = useRef<(() => void) | null>(null)
 
   const fetchInvoices = useCallback(async () => {
     setIsLoading(true)
@@ -135,27 +137,39 @@ export default function InvoicesPage() {
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return
+    const targets = bulkDeleteTargets.length > 0 ? bulkDeleteTargets : deleteTarget ? [deleteTarget] : []
+    if (targets.length === 0) return
     setIsDeleting(true)
     setDeleteError("")
 
     try {
-      const res = await fetch(`/api/invoices/${deleteTarget.id}`, {
-        method: "DELETE",
-      })
-      const result = await res.json()
+      const results = await Promise.all(
+        targets.map((inv) =>
+          fetch(`/api/invoices/${inv.id}`, { method: "DELETE" }).then((r) => r.json())
+        )
+      )
 
-      if (result.success) {
-        setDeleteTarget(null)
-        fetchInvoices()
+      const failed = results.filter((r) => !r.success)
+      if (failed.length > 0) {
+        setDeleteError(`Failed to delete ${failed.length} invoice(s).`)
       } else {
-        setDeleteError(result.error || "Failed to delete invoice.")
+        setDeleteTarget(null)
+        setBulkDeleteTargets([])
+        bulkClearRef.current?.()
+        bulkClearRef.current = null
+        fetchInvoices()
       }
     } catch {
-      setDeleteError("Failed to delete invoice. Please try again.")
+      setDeleteError("Failed to delete. Please try again.")
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  function handleBulkDelete(selected: Invoice[], clearSelection: () => void) {
+    setBulkDeleteTargets(selected)
+    bulkClearRef.current = clearSelection
+    setDeleteError("")
   }
 
   async function handleStatusChange(invoiceId: number, newStatus: string) {
@@ -365,7 +379,23 @@ export default function InvoicesPage() {
           rowKey="id"
           searchable
           searchPlaceholder="Search by invoice number or customer..."
+          selectable
           onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
+          renderBulkActions={(selected, clearSelection) => {
+            const drafts = selected.filter((inv) => inv.status === "DRAFT")
+            return (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                disabled={drafts.length === 0}
+                onClick={() => handleBulkDelete(drafts, clearSelection)}
+              >
+                <Trash2 className="size-4" />
+                Delete ({drafts.length})
+              </Button>
+            )
+          }}
           emptyMessage="No invoices yet. Click 'Create Invoice' to get started."
         />
       )}
@@ -380,18 +410,35 @@ export default function InvoicesPage() {
 
       {/* Delete Confirmation */}
       <Dialog
-        open={!!deleteTarget}
+        open={!!deleteTarget || bulkDeleteTargets.length > 0}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open) {
+            setDeleteTarget(null)
+            setBulkDeleteTargets([])
+          }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Invoice</DialogTitle>
+            <DialogTitle>
+              {bulkDeleteTargets.length > 1
+                ? `Delete ${bulkDeleteTargets.length} Invoices`
+                : "Delete Invoice"}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete invoice{" "}
-              <strong>{deleteTarget?.invoiceNumber}</strong>? This action cannot
-              be undone.
+              {bulkDeleteTargets.length > 1 ? (
+                <>
+                  Are you sure you want to delete{" "}
+                  <strong>{bulkDeleteTargets.length} invoices</strong>? This
+                  action cannot be undone.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete invoice{" "}
+                  <strong>{deleteTarget?.invoiceNumber}</strong>? This action
+                  cannot be undone.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           {deleteError && (
@@ -402,7 +449,10 @@ export default function InvoicesPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteTarget(null)}
+              onClick={() => {
+                setDeleteTarget(null)
+                setBulkDeleteTargets([])
+              }}
               disabled={isDeleting}
             >
               Cancel

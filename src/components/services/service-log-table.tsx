@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Plus,
   MoreHorizontal,
@@ -28,6 +28,7 @@ import {
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { ServiceFormDialog } from "@/components/services/service-form-dialog"
 import { ServiceDetailDialog } from "@/components/services/service-detail-dialog"
+import { LucideIcon } from "@/components/ui/lucide-icon"
 
 interface ServiceLog {
   id: number
@@ -43,7 +44,7 @@ interface ServiceLog {
   serviceTypeId: number | null
   totalDurationMinutes: number | null
   customer: { id: number; name: string }
-  serviceType: { id: number; name: string; color: string | null } | null
+  serviceType: { id: number; name: string; icon: string | null } | null
   timeEntries: Array<{
     id: number
     date: string
@@ -84,8 +85,10 @@ export function ServiceLogTable() {
   )
   const [detailService, setDetailService] = useState<ServiceLog | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ServiceLog | null>(null)
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<ServiceLog[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
+  const bulkClearRef = useRef<(() => void) | null>(null)
 
   const fetchServices = useCallback(async () => {
     setIsLoading(true)
@@ -127,27 +130,39 @@ export function ServiceLogTable() {
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return
+    const targets = bulkDeleteTargets.length > 0 ? bulkDeleteTargets : deleteTarget ? [deleteTarget] : []
+    if (targets.length === 0) return
     setIsDeleting(true)
     setDeleteError("")
 
     try {
-      const res = await fetch(`/api/services/${deleteTarget.id}`, {
-        method: "DELETE",
-      })
-      const result = await res.json()
+      const results = await Promise.all(
+        targets.map((s) =>
+          fetch(`/api/services/${s.id}`, { method: "DELETE" }).then((r) => r.json())
+        )
+      )
 
-      if (result.success) {
-        setDeleteTarget(null)
-        fetchServices()
+      const failed = results.filter((r) => !r.success)
+      if (failed.length > 0) {
+        setDeleteError(`Failed to delete ${failed.length} service(s).`)
       } else {
-        setDeleteError(result.error || "Failed to delete service.")
+        setDeleteTarget(null)
+        setBulkDeleteTargets([])
+        bulkClearRef.current?.()
+        bulkClearRef.current = null
+        fetchServices()
       }
     } catch {
-      setDeleteError("Failed to delete service. Please try again.")
+      setDeleteError("Failed to delete. Please try again.")
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  function handleBulkDelete(selected: ServiceLog[], clearSelection: () => void) {
+    setBulkDeleteTargets(selected)
+    bulkClearRef.current = clearSelection
+    setDeleteError("")
   }
 
   function handleFormSuccess() {
@@ -178,10 +193,10 @@ export function ServiceLogTable() {
       label: "Service",
       render: (_, row) => (
         <span className="flex items-center gap-2">
-          {row.serviceType?.color && (
-            <span
-              className="inline-block size-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: row.serviceType.color }}
+          {row.serviceType?.icon && (
+            <LucideIcon
+              name={row.serviceType.icon}
+              className="size-3.5 shrink-0 text-muted-foreground"
             />
           )}
           {row.serviceName}
@@ -320,6 +335,18 @@ export function ServiceLogTable() {
           rowKey="id"
           searchable
           searchPlaceholder="Search by service name or customer..."
+          selectable
+          renderBulkActions={(selected, clearSelection) => (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => handleBulkDelete(selected, clearSelection)}
+            >
+              <Trash2 className="size-4" />
+              Delete ({selected.length})
+            </Button>
+          )}
           emptyMessage="No services yet. Click 'Add Service' to log your first service."
         />
       )}
@@ -343,18 +370,35 @@ export function ServiceLogTable() {
 
       {/* Delete Confirmation */}
       <Dialog
-        open={!!deleteTarget}
+        open={!!deleteTarget || bulkDeleteTargets.length > 0}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open) {
+            setDeleteTarget(null)
+            setBulkDeleteTargets([])
+          }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Service</DialogTitle>
+            <DialogTitle>
+              {bulkDeleteTargets.length > 1
+                ? `Delete ${bulkDeleteTargets.length} Services`
+                : "Delete Service"}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the service{" "}
-              <strong>{deleteTarget?.serviceName}</strong>? This action cannot
-              be undone.
+              {bulkDeleteTargets.length > 1 ? (
+                <>
+                  Are you sure you want to delete{" "}
+                  <strong>{bulkDeleteTargets.length} services</strong>? This
+                  action cannot be undone.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete the service{" "}
+                  <strong>{deleteTarget?.serviceName}</strong>? This action
+                  cannot be undone.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           {deleteError && (
@@ -365,7 +409,10 @@ export function ServiceLogTable() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteTarget(null)}
+              onClick={() => {
+                setDeleteTarget(null)
+                setBulkDeleteTargets([])
+              }}
               disabled={isDeleting}
             >
               Cancel
