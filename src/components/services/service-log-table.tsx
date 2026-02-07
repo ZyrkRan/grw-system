@@ -1,39 +1,22 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
-  Search,
   MoreHorizontal,
   Pencil,
   Trash2,
   Eye,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -42,19 +25,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { ServiceFormDialog } from "@/components/services/service-form-dialog"
 import { ServiceDetailDialog } from "@/components/services/service-detail-dialog"
-
-interface Customer {
-  id: number
-  name: string
-}
-
-interface ServiceType {
-  id: number
-  name: string
-  color: string | null
-}
 
 interface ServiceLog {
   id: number
@@ -102,18 +75,7 @@ function formatDuration(minutes: number | null | undefined): string {
 
 export function ServiceLogTable() {
   const [services, setServices] = useState<ServiceLog[]>([])
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
   const [isLoading, setIsLoading] = useState(true)
-
-  // Filters
-  const [search, setSearch] = useState("")
-  const [filterCustomerId, setFilterCustomerId] = useState("")
-  const [filterServiceTypeId, setFilterServiceTypeId] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
-  const [filterPaymentStatus, setFilterPaymentStatus] = useState("")
-  const [filterDateFrom, setFilterDateFrom] = useState("")
-  const [filterDateTo, setFilterDateTo] = useState("")
 
   // Dialogs
   const [formDialogOpen, setFormDialogOpen] = useState(false)
@@ -125,74 +87,25 @@ export function ServiceLogTable() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
 
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchServices = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/services")
+      const result = await res.json()
 
-  // Fetch dropdown data on mount
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/customers").then((r) => r.json()),
-      fetch("/api/service-types").then((r) => r.json()),
-    ])
-      .then(([custResult, stResult]) => {
-        if (custResult.success) setCustomers(custResult.data)
-        if (stResult.success) setServiceTypes(stResult.data)
-      })
-      .catch((err) => console.error("Failed to load filter data:", err))
+      if (result.success) {
+        setServices(result.data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch services:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
-  const fetchServices = useCallback(
-    async (searchTerm: string) => {
-      setIsLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (searchTerm) params.set("search", searchTerm)
-        if (filterCustomerId) params.set("customerId", filterCustomerId)
-        if (filterServiceTypeId)
-          params.set("serviceTypeId", filterServiceTypeId)
-        if (filterStatus) params.set("status", filterStatus)
-        if (filterPaymentStatus)
-          params.set("paymentStatus", filterPaymentStatus)
-        if (filterDateFrom) params.set("dateFrom", filterDateFrom)
-        if (filterDateTo) params.set("dateTo", filterDateTo)
-
-        const res = await fetch(`/api/services?${params.toString()}`)
-        const result = await res.json()
-
-        if (result.success) {
-          setServices(result.data)
-        }
-      } catch (error) {
-        console.error("Failed to fetch services:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    [
-      filterCustomerId,
-      filterServiceTypeId,
-      filterStatus,
-      filterPaymentStatus,
-      filterDateFrom,
-      filterDateTo,
-    ]
-  )
-
-  // Fetch on mount and when filters change
   useEffect(() => {
-    fetchServices(search)
-  }, [fetchServices]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function handleSearchChange(value: string) {
-    setSearch(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      fetchServices(value)
-    }, 300)
-  }
-
-  function handleFilterChange() {
-    // Triggers re-fetch via useEffect on dependency change
-  }
+    fetchServices()
+  }, [fetchServices])
 
   function handleAddService() {
     setEditingService(undefined)
@@ -226,7 +139,7 @@ export function ServiceLogTable() {
 
       if (result.success) {
         setDeleteTarget(null)
-        fetchServices(search)
+        fetchServices()
       } else {
         setDeleteError(result.error || "Failed to delete service.")
       }
@@ -238,11 +151,152 @@ export function ServiceLogTable() {
   }
 
   function handleFormSuccess() {
-    fetchServices(search)
+    fetchServices()
   }
 
-  // Use void to suppress the lint warning for the unused function
-  void handleFilterChange
+  const serviceColumns: ColumnDef<ServiceLog>[] = [
+    {
+      key: "serviceDate",
+      label: "Date",
+      sortValue: (row) => new Date(row.serviceDate).getTime(),
+      render: (_, row) => (
+        <span className="whitespace-nowrap">{formatDate(row.serviceDate)}</span>
+      ),
+    },
+    {
+      key: "customer",
+      label: "Customer",
+      filterable: true,
+      sortValue: (row) => row.customer.name,
+      filterValue: (row) => row.customer.name,
+      render: (_, row) => (
+        <span className="font-medium">{row.customer.name}</span>
+      ),
+    },
+    {
+      key: "serviceName",
+      label: "Service",
+      render: (_, row) => (
+        <span className="flex items-center gap-2">
+          {row.serviceType?.color && (
+            <span
+              className="inline-block size-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: row.serviceType.color }}
+            />
+          )}
+          {row.serviceName}
+        </span>
+      ),
+    },
+    {
+      key: "serviceType",
+      label: "Type",
+      filterable: true,
+      filterValue: (row) => row.serviceType?.name ?? "None",
+      visible: false,
+      render: () => null,
+    },
+    {
+      key: "status",
+      label: "Status",
+      filterable: true,
+      filterValue: (row) => (row.status === "COMPLETE" ? "Complete" : "Pending"),
+      render: (_, row) => (
+        <Badge
+          variant={row.status === "COMPLETE" ? "default" : "outline"}
+          className={
+            row.status === "COMPLETE"
+              ? "bg-green-600 text-white"
+              : "border-amber-500 text-amber-600"
+          }
+        >
+          {row.status === "COMPLETE" ? "Complete" : "Pending"}
+        </Badge>
+      ),
+    },
+    {
+      key: "paymentStatus",
+      label: "Payment",
+      filterable: true,
+      filterValue: (row) =>
+        row.paymentStatus === "PAID" ? "Paid" : "Unpaid",
+      render: (_, row) => (
+        <Badge
+          variant={row.paymentStatus === "PAID" ? "default" : "destructive"}
+          className={
+            row.paymentStatus === "PAID" ? "bg-green-600 text-white" : ""
+          }
+        >
+          {row.paymentStatus === "PAID" ? "Paid" : "Unpaid"}
+        </Badge>
+      ),
+    },
+    {
+      key: "priceCharged",
+      label: "Price",
+      className: "text-right",
+      sortValue: (row) => Number(row.priceCharged),
+      render: (_, row) => (
+        <span className="whitespace-nowrap">
+          {formatCurrency(row.priceCharged)}
+        </span>
+      ),
+    },
+    {
+      key: "amountPaid",
+      label: "Paid",
+      className: "text-right",
+      sortValue: (row) => Number(row.amountPaid ?? 0),
+      render: (_, row) => (
+        <span className="whitespace-nowrap">
+          {formatCurrency(row.amountPaid)}
+        </span>
+      ),
+    },
+    {
+      key: "totalDurationMinutes",
+      label: "Duration",
+      sortValue: (row) => row.totalDurationMinutes ?? 0,
+      render: (_, row) => (
+        <span className="whitespace-nowrap">
+          {formatDuration(row.totalDurationMinutes)}
+        </span>
+      ),
+    },
+    {
+      key: "_actions",
+      label: "",
+      pinned: true,
+      className: "w-12",
+      render: (_, service) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8">
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">Actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleViewService(service)}>
+              <Eye className="mr-2 size-4" />
+              View
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleEditService(service)}>
+              <Pencil className="mr-2 size-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => handleDeleteClick(service)}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-4">
@@ -254,256 +308,21 @@ export function ServiceLogTable() {
         </Button>
       </div>
 
-      {/* Filter Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="relative w-full">
-          <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-          <Input
-            placeholder="Search services..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
-          />
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-
-        <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Customers" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Customers</SelectItem>
-            {customers.map((c) => (
-              <SelectItem key={c.id} value={String(c.id)}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filterServiceTypeId}
-          onValueChange={setFilterServiceTypeId}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {serviceTypes.map((st) => (
-              <SelectItem key={st.id} value={String(st.id)}>
-                {st.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="PENDING">Pending</SelectItem>
-            <SelectItem value="COMPLETE">Complete</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filterPaymentStatus}
-          onValueChange={setFilterPaymentStatus}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Payment" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Payment</SelectItem>
-            <SelectItem value="UNPAID">Unpaid</SelectItem>
-            <SelectItem value="PAID">Paid</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex items-center gap-2 w-full">
-          <Input
-            type="date"
-            value={filterDateFrom}
-            onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="w-full"
-            placeholder="From"
-          />
-          <span className="text-muted-foreground text-sm">to</span>
-          <Input
-            type="date"
-            value={filterDateTo}
-            onChange={(e) => setFilterDateTo(e.target.value)}
-            className="w-full"
-            placeholder="To"
-          />
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Service</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Payment</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Paid</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead className="w-10">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    <Skeleton className="h-4 w-20" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-28" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-32" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-14" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-14" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-8" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : services.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center">
-                  {search ||
-                  filterCustomerId ||
-                  filterServiceTypeId ||
-                  filterStatus ||
-                  filterPaymentStatus ||
-                  filterDateFrom ||
-                  filterDateTo
-                    ? "No services match your filters. Try adjusting your search criteria."
-                    : "No services yet. Click 'Add Service' to log your first service."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              services.map((service) => (
-                <TableRow key={service.id}>
-                  <TableCell className="whitespace-nowrap">
-                    {formatDate(service.serviceDate)}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {service.customer.name}
-                  </TableCell>
-                  <TableCell>
-                    <span className="flex items-center gap-2">
-                      {service.serviceType?.color && (
-                        <span
-                          className="inline-block size-2.5 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor: service.serviceType.color,
-                          }}
-                        />
-                      )}
-                      {service.serviceName}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        service.status === "COMPLETE" ? "default" : "outline"
-                      }
-                      className={
-                        service.status === "COMPLETE"
-                          ? "bg-green-600 text-white"
-                          : "border-amber-500 text-amber-600"
-                      }
-                    >
-                      {service.status === "COMPLETE" ? "Complete" : "Pending"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        service.paymentStatus === "PAID"
-                          ? "default"
-                          : "destructive"
-                      }
-                      className={
-                        service.paymentStatus === "PAID"
-                          ? "bg-green-600 text-white"
-                          : ""
-                      }
-                    >
-                      {service.paymentStatus === "PAID" ? "Paid" : "Unpaid"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
-                    {formatCurrency(service.priceCharged)}
-                  </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
-                    {formatCurrency(service.amountPaid)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {formatDuration(service.totalDurationMinutes)}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-8">
-                          <MoreHorizontal className="size-4" />
-                          <span className="sr-only">Actions</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => handleViewService(service)}
-                        >
-                          <Eye className="mr-2 size-4" />
-                          View
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleEditService(service)}
-                        >
-                          <Pencil className="mr-2 size-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => handleDeleteClick(service)}
-                        >
-                          <Trash2 className="mr-2 size-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      ) : (
+        <DataTable
+          storageKey="service-log"
+          columns={serviceColumns}
+          data={services}
+          rowKey="id"
+          searchable
+          searchPlaceholder="Search by service name or customer..."
+          emptyMessage="No services yet. Click 'Add Service' to log your first service."
+        />
+      )}
 
       {/* Form Dialog */}
       <ServiceFormDialog

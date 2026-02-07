@@ -321,7 +321,7 @@ export function DataTable<T>({
   data,
   rowKey = "id" as keyof T,
   onRowClick,
-  selectable = false,
+  selectable = true,
   onSelectionChange,
   renderBulkActions,
   searchable = false,

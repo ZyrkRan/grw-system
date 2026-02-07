@@ -1,42 +1,25 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   Plus,
-  Search,
   MoreHorizontal,
   Eye,
   Pencil,
   Trash2,
   Send,
   CheckCircle,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -45,12 +28,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog"
-
-interface Customer {
-  id: number
-  name: string
-}
 
 interface InvoiceItem {
   id: number
@@ -109,15 +88,7 @@ function getStatusBadge(status: string) {
 export default function InvoicesPage() {
   const router = useRouter()
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [customers, setCustomers] = useState<Customer[]>([])
   const [isLoading, setIsLoading] = useState(true)
-
-  // Filters
-  const [search, setSearch] = useState("")
-  const [filterCustomerId, setFilterCustomerId] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
-  const [filterDateFrom, setFilterDateFrom] = useState("")
-  const [filterDateTo, setFilterDateTo] = useState("")
 
   // Dialogs
   const [formDialogOpen, setFormDialogOpen] = useState(false)
@@ -128,56 +99,25 @@ export default function InvoicesPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
 
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchInvoices = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/invoices")
+      const result = await res.json()
 
-  // Fetch customers for the filter dropdown
-  useEffect(() => {
-    fetch("/api/customers")
-      .then((r) => r.json())
-      .then((result) => {
-        if (result.success) setCustomers(result.data)
-      })
-      .catch((err) => console.error("Failed to load customers:", err))
+      if (result.success) {
+        setInvoices(result.data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch invoices:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
-  const fetchInvoices = useCallback(
-    async (searchTerm: string) => {
-      setIsLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (searchTerm) params.set("search", searchTerm)
-        if (filterCustomerId) params.set("customerId", filterCustomerId)
-        if (filterStatus) params.set("status", filterStatus)
-        if (filterDateFrom) params.set("dateFrom", filterDateFrom)
-        if (filterDateTo) params.set("dateTo", filterDateTo)
-
-        const res = await fetch(`/api/invoices?${params.toString()}`)
-        const result = await res.json()
-
-        if (result.success) {
-          setInvoices(result.data)
-        }
-      } catch (error) {
-        console.error("Failed to fetch invoices:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    [filterCustomerId, filterStatus, filterDateFrom, filterDateTo]
-  )
-
-  // Fetch on mount and when filters change
   useEffect(() => {
-    fetchInvoices(search)
-  }, [fetchInvoices]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function handleSearchChange(value: string) {
-    setSearch(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      fetchInvoices(value)
-    }, 300)
-  }
+    fetchInvoices()
+  }, [fetchInvoices])
 
   function handleCreateInvoice() {
     setEditingInvoice(undefined)
@@ -207,7 +147,7 @@ export default function InvoicesPage() {
 
       if (result.success) {
         setDeleteTarget(null)
-        fetchInvoices(search)
+        fetchInvoices()
       } else {
         setDeleteError(result.error || "Failed to delete invoice.")
       }
@@ -228,7 +168,7 @@ export default function InvoicesPage() {
       const result = await res.json()
 
       if (result.success) {
-        fetchInvoices(search)
+        fetchInvoices()
       }
     } catch (error) {
       console.error("Failed to update invoice status:", error)
@@ -236,11 +176,172 @@ export default function InvoicesPage() {
   }
 
   function handleFormSuccess() {
-    fetchInvoices(search)
+    fetchInvoices()
   }
 
-  const hasFilters =
-    search || filterCustomerId || filterStatus || filterDateFrom || filterDateTo
+  const invoiceColumns: ColumnDef<Invoice>[] = [
+    {
+      key: "invoiceNumber",
+      label: "Invoice #",
+      render: (_, row) => (
+        <button
+          className="font-medium text-primary underline-offset-4 hover:underline"
+          onClick={(e) => {
+            e.stopPropagation()
+            router.push(`/invoices/${row.id}`)
+          }}
+        >
+          {row.invoiceNumber}
+        </button>
+      ),
+    },
+    {
+      key: "customer",
+      label: "Customer",
+      filterable: true,
+      sortValue: (row) => row.customer.name,
+      filterValue: (row) => row.customer.name,
+      render: (_, row) => row.customer.name,
+    },
+    {
+      key: "issueDate",
+      label: "Date",
+      sortValue: (row) => new Date(row.issueDate).getTime(),
+      render: (_, row) => (
+        <span className="whitespace-nowrap">{formatDate(row.issueDate)}</span>
+      ),
+    },
+    {
+      key: "dueDate",
+      label: "Due Date",
+      sortValue: (row) =>
+        row.dueDate ? new Date(row.dueDate).getTime() : 0,
+      render: (_, row) =>
+        row.dueDate ? (
+          <span className="whitespace-nowrap">{formatDate(row.dueDate)}</span>
+        ) : (
+          <span className="text-muted-foreground">&mdash;</span>
+        ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      filterable: true,
+      filterValue: (row) => {
+        switch (row.status) {
+          case "DRAFT": return "Draft"
+          case "SENT": return "Sent"
+          case "PAID": return "Paid"
+          case "CANCELLED": return "Cancelled"
+          default: return row.status
+        }
+      },
+      render: (_, row) => getStatusBadge(row.status),
+    },
+    {
+      key: "_count",
+      label: "Items",
+      sortValue: (row) => row._count.items,
+      render: (_, row) => row._count.items,
+    },
+    {
+      key: "total",
+      label: "Total",
+      className: "text-right",
+      sortValue: (row) => Number(row.total),
+      render: (_, row) => (
+        <span className="whitespace-nowrap">{formatCurrency(row.total)}</span>
+      ),
+    },
+    {
+      key: "amountPaid",
+      label: "Paid",
+      className: "text-right",
+      sortValue: (row) => Number(row.amountPaid),
+      render: (_, row) => (
+        <span className="whitespace-nowrap">
+          {formatCurrency(row.amountPaid)}
+        </span>
+      ),
+    },
+    {
+      key: "_actions",
+      label: "",
+      pinned: true,
+      className: "w-12",
+      render: (_, invoice) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">Actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                router.push(`/invoices/${invoice.id}`)
+              }}
+            >
+              <Eye className="mr-2 size-4" />
+              View
+            </DropdownMenuItem>
+            {invoice.status === "DRAFT" && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleEditInvoice(invoice)
+                }}
+              >
+                <Pencil className="mr-2 size-4" />
+                Edit
+              </DropdownMenuItem>
+            )}
+            {invoice.status === "DRAFT" && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleStatusChange(invoice.id, "SENT")
+                }}
+              >
+                <Send className="mr-2 size-4" />
+                Mark as Sent
+              </DropdownMenuItem>
+            )}
+            {invoice.status === "SENT" && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleStatusChange(invoice.id, "PAID")
+                }}
+              >
+                <CheckCircle className="mr-2 size-4" />
+                Mark as Paid
+              </DropdownMenuItem>
+            )}
+            {invoice.status === "DRAFT" && (
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDeleteClick(invoice)
+                }}
+              >
+                <Trash2 className="mr-2 size-4" />
+                Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-4">
@@ -252,218 +353,22 @@ export default function InvoicesPage() {
         </Button>
       </div>
 
-      {/* Filter Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="relative w-full">
-          <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-          <Input
-            placeholder="Search invoice #..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
-          />
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-
-        <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Customers" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Customers</SelectItem>
-            {customers.map((c) => (
-              <SelectItem key={c.id} value={String(c.id)}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="DRAFT">Draft</SelectItem>
-            <SelectItem value="SENT">Sent</SelectItem>
-            <SelectItem value="PAID">Paid</SelectItem>
-            <SelectItem value="CANCELLED">Cancelled</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex items-center gap-2 w-full">
-          <Input
-            type="date"
-            value={filterDateFrom}
-            onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="w-full"
-            placeholder="From"
-          />
-          <span className="text-muted-foreground text-sm">to</span>
-          <Input
-            type="date"
-            value={filterDateTo}
-            onChange={(e) => setFilterDateTo(e.target.value)}
-            className="w-full"
-            placeholder="To"
-          />
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Invoice #</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Due Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Items</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Paid</TableHead>
-              <TableHead className="w-10">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    <Skeleton className="h-4 w-24" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-28" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-20" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-20" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-8" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-8" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : invoices.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center">
-                  {hasFilters
-                    ? "No invoices match your filters. Try different criteria."
-                    : "No invoices yet. Click 'Create Invoice' to get started."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell>
-                    <button
-                      className="font-medium text-primary underline-offset-4 hover:underline"
-                      onClick={() =>
-                        router.push(`/invoices/${invoice.id}`)
-                      }
-                    >
-                      {invoice.invoiceNumber}
-                    </button>
-                  </TableCell>
-                  <TableCell>{invoice.customer.name}</TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {formatDate(invoice.issueDate)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {invoice.dueDate ? (
-                      formatDate(invoice.dueDate)
-                    ) : (
-                      <span className="text-muted-foreground">&mdash;</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                  <TableCell>{invoice._count.items}</TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
-                    {formatCurrency(invoice.total)}
-                  </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
-                    {formatCurrency(invoice.amountPaid)}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-8">
-                          <MoreHorizontal className="size-4" />
-                          <span className="sr-only">Actions</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            router.push(`/invoices/${invoice.id}`)
-                          }
-                        >
-                          <Eye className="mr-2 size-4" />
-                          View
-                        </DropdownMenuItem>
-                        {invoice.status === "DRAFT" && (
-                          <DropdownMenuItem
-                            onClick={() => handleEditInvoice(invoice)}
-                          >
-                            <Pencil className="mr-2 size-4" />
-                            Edit
-                          </DropdownMenuItem>
-                        )}
-                        {invoice.status === "DRAFT" && (
-                          <DropdownMenuItem
-                            onClick={() =>
-                              handleStatusChange(invoice.id, "SENT")
-                            }
-                          >
-                            <Send className="mr-2 size-4" />
-                            Mark as Sent
-                          </DropdownMenuItem>
-                        )}
-                        {invoice.status === "SENT" && (
-                          <DropdownMenuItem
-                            onClick={() =>
-                              handleStatusChange(invoice.id, "PAID")
-                            }
-                          >
-                            <CheckCircle className="mr-2 size-4" />
-                            Mark as Paid
-                          </DropdownMenuItem>
-                        )}
-                        {invoice.status === "DRAFT" && (
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => handleDeleteClick(invoice)}
-                          >
-                            <Trash2 className="mr-2 size-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      ) : (
+        <DataTable
+          storageKey="invoices"
+          columns={invoiceColumns}
+          data={invoices}
+          rowKey="id"
+          searchable
+          searchPlaceholder="Search by invoice number or customer..."
+          onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
+          emptyMessage="No invoices yet. Click 'Create Invoice' to get started."
+        />
+      )}
 
       {/* Form Dialog */}
       <InvoiceFormDialog

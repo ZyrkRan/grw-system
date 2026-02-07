@@ -1,27 +1,16 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
-  Search,
   MoreHorizontal,
   Pencil,
   Trash2,
   Tag,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { TransactionDialog } from "@/components/finances/transaction-dialog"
 
 interface AccountRef {
@@ -76,21 +66,6 @@ interface Transaction {
   serviceLog: ServiceLogRef | null
 }
 
-const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-]
-
 function formatCurrency(value: number | string | null | undefined): string {
   if (value === null || value === undefined) return "$0.00"
   return new Intl.NumberFormat("en-US", {
@@ -109,18 +84,8 @@ function formatDate(dateString: string): string {
 
 export function TransactionsTable() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [accounts, setAccounts] = useState<AccountRef[]>([])
   const [categories, setCategories] = useState<CategoryRef[]>([])
   const [isLoading, setIsLoading] = useState(true)
-
-  // Filters
-  const [search, setSearch] = useState("")
-  const [filterAccountId, setFilterAccountId] = useState("")
-  const [filterCategoryId, setFilterCategoryId] = useState("")
-  const [filterType, setFilterType] = useState("")
-  const [filterMonth, setFilterMonth] = useState("")
-  const [filterYear, setFilterYear] = useState("")
-  const [filterUncategorized, setFilterUncategorized] = useState(false)
 
   // Dialogs
   const [formDialogOpen, setFormDialogOpen] = useState(false)
@@ -132,88 +97,55 @@ export function TransactionsTable() {
   const [deleteError, setDeleteError] = useState("")
 
   // Quick category assign
-  const [categoryAssignTarget, setCategoryAssignTarget] = useState<Transaction | null>(null)
+  const [categoryAssignTarget, setCategoryAssignTarget] =
+    useState<Transaction | null>(null)
   const [assignCategoryId, setAssignCategoryId] = useState("")
   const [isAssigning, setIsAssigning] = useState(false)
 
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Fetch dropdown data on mount
+  // Fetch categories for assign dialog
   useEffect(() => {
-    Promise.all([
-      fetch("/api/finances/accounts").then((r) => r.json()),
-      fetch("/api/finances/categories").then((r) => r.json()),
-    ])
-      .then(([accResult, catResult]) => {
-        if (accResult.success) setAccounts(accResult.data)
-        if (catResult.success) {
-          // Flatten categories for the filter dropdown
+    fetch("/api/finances/categories")
+      .then((r) => r.json())
+      .then((result) => {
+        if (result.success) {
           const flat: CategoryRef[] = []
-          for (const cat of catResult.data) {
+          for (const cat of result.data) {
             flat.push({ id: cat.id, name: cat.name, color: cat.color })
             if (cat.children) {
               for (const child of cat.children) {
-                flat.push({ id: child.id, name: child.name, color: child.color })
+                flat.push({
+                  id: child.id,
+                  name: child.name,
+                  color: child.color,
+                })
               }
             }
           }
           setCategories(flat)
         }
       })
-      .catch((err) => console.error("Failed to load filter data:", err))
+      .catch((err) => console.error("Failed to load categories:", err))
   }, [])
 
-  const fetchTransactions = useCallback(
-    async (searchTerm: string) => {
-      setIsLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (searchTerm) params.set("search", searchTerm)
-        if (filterAccountId && filterAccountId !== "all")
-          params.set("accountId", filterAccountId)
-        if (filterCategoryId && filterCategoryId !== "all")
-          params.set("categoryId", filterCategoryId)
-        if (filterType && filterType !== "all") params.set("type", filterType)
-        if (filterMonth && filterMonth !== "all")
-          params.set("month", filterMonth)
-        if (filterYear) params.set("year", filterYear)
-        if (filterUncategorized) params.set("uncategorized", "true")
+  const fetchTransactions = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/finances/transactions")
+      const result = await res.json()
 
-        const res = await fetch(
-          `/api/finances/transactions?${params.toString()}`
-        )
-        const result = await res.json()
-
-        if (result.success) {
-          setTransactions(result.data)
-        }
-      } catch (error) {
-        console.error("Failed to fetch transactions:", error)
-      } finally {
-        setIsLoading(false)
+      if (result.success) {
+        setTransactions(result.data)
       }
-    },
-    [
-      filterAccountId,
-      filterCategoryId,
-      filterType,
-      filterMonth,
-      filterYear,
-      filterUncategorized,
-    ]
-  )
+    } catch (error) {
+      console.error("Failed to fetch transactions:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    fetchTransactions(search)
-  }, [fetchTransactions]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function handleSearchChange(value: string) {
-    setSearch(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      fetchTransactions(value)
-    }, 300)
-  }
+    fetchTransactions()
+  }, [fetchTransactions])
 
   function handleAddTransaction() {
     setEditingTransaction(undefined)
@@ -244,7 +176,7 @@ export function TransactionsTable() {
 
       if (result.success) {
         setDeleteTarget(null)
-        fetchTransactions(search)
+        fetchTransactions()
       } else {
         setDeleteError(result.error || "Failed to delete transaction.")
       }
@@ -257,7 +189,9 @@ export function TransactionsTable() {
 
   function handleCategoryAssignClick(transaction: Transaction) {
     setCategoryAssignTarget(transaction)
-    setAssignCategoryId(transaction.category ? String(transaction.category.id) : "")
+    setAssignCategoryId(
+      transaction.category ? String(transaction.category.id) : ""
+    )
   }
 
   async function handleCategoryAssignConfirm() {
@@ -271,9 +205,10 @@ export function TransactionsTable() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            categoryId: assignCategoryId && assignCategoryId !== "none"
-              ? parseInt(assignCategoryId, 10)
-              : null,
+            categoryId:
+              assignCategoryId && assignCategoryId !== "none"
+                ? parseInt(assignCategoryId, 10)
+                : null,
           }),
         }
       )
@@ -281,7 +216,7 @@ export function TransactionsTable() {
 
       if (result.success) {
         setCategoryAssignTarget(null)
-        fetchTransactions(search)
+        fetchTransactions()
       }
     } catch {
       console.error("Failed to assign category")
@@ -291,17 +226,145 @@ export function TransactionsTable() {
   }
 
   function handleFormSuccess() {
-    fetchTransactions(search)
+    fetchTransactions()
   }
 
-  const hasFilters =
-    search ||
-    filterAccountId ||
-    filterCategoryId ||
-    filterType ||
-    filterMonth ||
-    filterYear ||
-    filterUncategorized
+  const transactionColumns: ColumnDef<Transaction>[] = [
+    {
+      key: "date",
+      label: "Date",
+      sortValue: (row) => new Date(row.date).getTime(),
+      render: (_, row) => (
+        <span className="whitespace-nowrap">{formatDate(row.date)}</span>
+      ),
+    },
+    {
+      key: "description",
+      label: "Description",
+      render: (_, row) => (
+        <div className="flex items-center gap-2">
+          <span className="max-w-[200px] truncate">{row.description}</span>
+          {row.isPending && (
+            <Badge
+              variant="outline"
+              className="border-amber-500 text-amber-600 text-xs"
+            >
+              Pending
+            </Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "merchantName",
+      label: "Merchant",
+      render: (_, row) => (
+        <span className="text-muted-foreground">
+          {row.merchantName || "\u2014"}
+        </span>
+      ),
+    },
+    {
+      key: "account",
+      label: "Account",
+      filterable: true,
+      sortValue: (row) => row.account.name,
+      filterValue: (row) => row.account.name,
+      render: (_, row) => row.account.name,
+    },
+    {
+      key: "category",
+      label: "Category",
+      filterable: true,
+      filterValue: (row) => row.category?.name ?? "Uncategorized",
+      sortValue: (row) => row.category?.name ?? "",
+      render: (_, row) =>
+        row.category ? (
+          <span className="flex items-center gap-2">
+            <span
+              className="inline-block size-3 shrink-0 rounded-full"
+              style={{ backgroundColor: row.category.color }}
+            />
+            {row.category.name}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Uncategorized</span>
+        ),
+    },
+    {
+      key: "amount",
+      label: "Amount",
+      className: "text-right",
+      sortValue: (row) => Number(row.amount),
+      render: (_, row) => (
+        <span
+          className={`whitespace-nowrap font-medium ${
+            row.type === "INFLOW" ? "text-green-600" : "text-red-600"
+          }`}
+        >
+          {row.type === "INFLOW" ? "+" : "-"}
+          {formatCurrency(row.amount)}
+        </span>
+      ),
+    },
+    {
+      key: "type",
+      label: "Type",
+      filterable: true,
+      filterValue: (row) =>
+        row.type === "INFLOW" ? "Inflow" : "Outflow",
+      render: (_, row) => (
+        <Badge
+          variant={row.type === "INFLOW" ? "default" : "destructive"}
+          className={row.type === "INFLOW" ? "bg-green-600 text-white" : ""}
+        >
+          {row.type === "INFLOW" ? "Inflow" : "Outflow"}
+        </Badge>
+      ),
+    },
+    {
+      key: "_actions",
+      label: "",
+      pinned: true,
+      className: "w-12",
+      render: (_, txn) => {
+        const isPlaid = !!txn.plaidTransactionId
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8">
+                <MoreHorizontal className="size-4" />
+                <span className="sr-only">Actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => handleCategoryAssignClick(txn)}
+              >
+                <Tag className="mr-2 size-4" />
+                Edit Category
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleEditTransaction(txn)}
+              >
+                <Pencil className="mr-2 size-4" />
+                Edit
+              </DropdownMenuItem>
+              {!isPlaid && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => handleDeleteClick(txn)}
+                >
+                  <Trash2 className="mr-2 size-4" />
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+    },
+  ]
 
   return (
     <div className="space-y-4">
@@ -313,253 +376,21 @@ export function TransactionsTable() {
         </Button>
       </div>
 
-      {/* Filter Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="relative w-full">
-          <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-          <Input
-            placeholder="Search transactions..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
-          />
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-
-        <Select value={filterAccountId} onValueChange={setFilterAccountId}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Accounts" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Accounts</SelectItem>
-            {accounts.map((a) => (
-              <SelectItem key={a.id} value={String(a.id)}>
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterCategoryId} onValueChange={setFilterCategoryId}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={String(c.id)}>
-                <span className="flex items-center gap-2">
-                  <span
-                    className="inline-block size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: c.color }}
-                  />
-                  {c.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="INFLOW">Inflow</SelectItem>
-            <SelectItem value="OUTFLOW">Outflow</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={filterMonth} onValueChange={setFilterMonth}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Months" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Months</SelectItem>
-            {MONTH_NAMES.map((name, i) => (
-              <SelectItem key={i} value={String(i + 1)}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Input
-          type="number"
-          placeholder="Year"
-          value={filterYear}
-          onChange={(e) => setFilterYear(e.target.value)}
-          className="w-full"
-          min={2000}
-          max={2100}
+      ) : (
+        <DataTable
+          storageKey="transactions"
+          columns={transactionColumns}
+          data={transactions}
+          rowKey="id"
+          searchable
+          searchPlaceholder="Search by description or merchant..."
+          emptyMessage="No transactions yet. Click 'Add Transaction' or connect a bank account to get started."
         />
-
-        <div className="flex items-center gap-2 w-full">
-          <Checkbox
-            id="uncategorized-filter"
-            checked={filterUncategorized}
-            onCheckedChange={(checked) =>
-              setFilterUncategorized(checked === true)
-            }
-          />
-          <label
-            htmlFor="uncategorized-filter"
-            className="text-sm text-muted-foreground cursor-pointer whitespace-nowrap"
-          >
-            Uncategorized only
-          </label>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Merchant</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="w-10">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-36" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                </TableRow>
-              ))
-            ) : transactions.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center">
-                  {hasFilters
-                    ? "No transactions match your filters. Try different criteria or connect a bank account."
-                    : "No transactions yet. Click 'Add Transaction' or connect a bank account to get started."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              transactions.map((txn) => {
-                const isPlaid = !!txn.plaidTransactionId
-                return (
-                  <TableRow key={txn.id}>
-                    <TableCell className="whitespace-nowrap">
-                      {formatDate(txn.date)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="max-w-[200px] truncate">
-                          {txn.description}
-                        </span>
-                        {txn.isPending && (
-                          <Badge
-                            variant="outline"
-                            className="border-amber-500 text-amber-600 text-xs"
-                          >
-                            Pending
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {txn.merchantName || "\u2014"}
-                    </TableCell>
-                    <TableCell>{txn.account.name}</TableCell>
-                    <TableCell>
-                      {txn.category ? (
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="inline-block size-3 shrink-0 rounded-full"
-                            style={{ backgroundColor: txn.category.color }}
-                          />
-                          {txn.category.name}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Uncategorized
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right whitespace-nowrap font-medium ${
-                        txn.type === "INFLOW"
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {txn.type === "INFLOW" ? "+" : "-"}
-                      {formatCurrency(txn.amount)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          txn.type === "INFLOW" ? "default" : "destructive"
-                        }
-                        className={
-                          txn.type === "INFLOW"
-                            ? "bg-green-600 text-white"
-                            : ""
-                        }
-                      >
-                        {txn.type === "INFLOW" ? "Inflow" : "Outflow"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                          >
-                            <MoreHorizontal className="size-4" />
-                            <span className="sr-only">Actions</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleCategoryAssignClick(txn)}
-                          >
-                            <Tag className="mr-2 size-4" />
-                            Edit Category
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleEditTransaction(txn)}
-                          >
-                            <Pencil className="mr-2 size-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          {!isPlaid && (
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => handleDeleteClick(txn)}
-                            >
-                              <Trash2 className="mr-2 size-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      )}
 
       {/* Transaction Form Dialog */}
       <TransactionDialog
@@ -580,11 +411,15 @@ export function TransactionsTable() {
           <DialogHeader>
             <DialogTitle>Assign Category</DialogTitle>
             <DialogDescription>
-              Select a category for &quot;{categoryAssignTarget?.description}&quot;
+              Select a category for &quot;{categoryAssignTarget?.description}
+              &quot;
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <Select value={assignCategoryId} onValueChange={setAssignCategoryId}>
+            <Select
+              value={assignCategoryId}
+              onValueChange={setAssignCategoryId}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
