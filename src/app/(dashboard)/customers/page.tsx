@@ -2,17 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Search, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Plus, MoreHorizontal, Pencil, Trash2, Loader2, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +18,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Skeleton } from "@/components/ui/skeleton"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 import { CustomerDialog } from "@/components/customers/customer-dialog"
 
 interface Customer {
@@ -37,6 +30,7 @@ interface Customer {
   email: string | null
   address: string
   serviceInterval: number | null
+  isVip: boolean
   _count: {
     serviceLogs: number
   }
@@ -46,23 +40,19 @@ export default function CustomersPage() {
   const router = useRouter()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>(
     undefined
   )
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Customer[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchCustomers = useCallback(async (searchTerm: string) => {
+  const fetchCustomers = useCallback(async () => {
     setIsLoading(true)
     try {
-      const params = new URLSearchParams()
-      if (searchTerm) params.set("search", searchTerm)
-
-      const res = await fetch(`/api/customers?${params.toString()}`)
+      const res = await fetch("/api/customers")
       const result = await res.json()
 
       if (result.success) {
@@ -76,16 +66,8 @@ export default function CustomersPage() {
   }, [])
 
   useEffect(() => {
-    fetchCustomers("")
+    fetchCustomers()
   }, [fetchCustomers])
-
-  function handleSearchChange(value: string) {
-    setSearch(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      fetchCustomers(value)
-    }, 300)
-  }
 
   function handleAddCustomer() {
     setEditingCustomer(undefined)
@@ -103,32 +85,245 @@ export default function CustomersPage() {
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return
+    const targets = bulkDeleteTargets.length > 0 ? bulkDeleteTargets : deleteTarget ? [deleteTarget] : []
+    if (targets.length === 0) return
+
     setIsDeleting(true)
     setDeleteError("")
 
     try {
-      const res = await fetch(`/api/customers/${deleteTarget.id}`, {
-        method: "DELETE",
-      })
-      const result = await res.json()
+      const results = await Promise.all(
+        targets.map((c) =>
+          fetch(`/api/customers/${c.id}`, { method: "DELETE" }).then((r) => r.json())
+        )
+      )
 
-      if (result.success) {
-        setDeleteTarget(null)
-        fetchCustomers(search)
+      const failed = results.filter((r) => !r.success)
+      if (failed.length > 0) {
+        setDeleteError(`Failed to delete ${failed.length} customer(s).`)
       } else {
-        setDeleteError(result.error || "Failed to delete customer.")
+        setDeleteTarget(null)
+        setBulkDeleteTargets([])
+        fetchCustomers()
       }
     } catch {
-      setDeleteError("Failed to delete customer. Please try again.")
+      setDeleteError("Failed to delete. Please try again.")
     } finally {
       setIsDeleting(false)
     }
   }
 
-  function handleDialogSuccess() {
-    fetchCustomers(search)
+  function handleBulkDelete(selected: Customer[], clearSelection: () => void) {
+    setBulkDeleteTargets(selected)
+    bulkClearRef.current = clearSelection
+    setDeleteError("")
   }
+
+  const bulkClearRef = useRef<(() => void) | null>(null)
+
+  function handleDialogSuccess() {
+    fetchCustomers()
+  }
+
+  async function toggleVip(customer: Customer) {
+    const newVip = !customer.isVip
+    // Optimistic update
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === customer.id ? { ...c, isVip: newVip } : c))
+    )
+    try {
+      const res = await fetch(`/api/customers/${customer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isVip: newVip }),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        // Revert on failure
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === customer.id ? { ...c, isVip: !newVip } : c))
+        )
+      }
+    } catch {
+      // Revert on error
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === customer.id ? { ...c, isVip: !newVip } : c))
+      )
+    }
+  }
+
+  const intervalOptions = [
+    { value: 14, label: "2 Weeks" },
+    { value: 21, label: "3 Weeks" },
+    { value: 28, label: "Monthly" },
+  ] as const
+
+  async function setInterval(customer: Customer, interval: number | null) {
+    const prev = customer.serviceInterval
+    setCustomers((cs) =>
+      cs.map((c) => (c.id === customer.id ? { ...c, serviceInterval: interval } : c))
+    )
+    try {
+      const res = await fetch(`/api/customers/${customer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serviceInterval: interval }),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        setCustomers((cs) =>
+          cs.map((c) => (c.id === customer.id ? { ...c, serviceInterval: prev } : c))
+        )
+      }
+    } catch {
+      setCustomers((cs) =>
+        cs.map((c) => (c.id === customer.id ? { ...c, serviceInterval: prev } : c))
+      )
+    }
+  }
+
+  const customerColumns: ColumnDef<Customer>[] = [
+    {
+      key: "isVip",
+      label: "",
+      pinnedStart: true,
+      sortValue: (row) => (row.isVip ? 1 : 0),
+      className: "w-10 px-0 text-center",
+      render: (_, customer) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleVip(customer)
+          }}
+          className="inline-flex items-center justify-center"
+          aria-label={customer.isVip ? "Remove VIP status" : "Set as VIP"}
+        >
+          <Star
+            className={cn(
+              "size-4 transition-colors",
+              customer.isVip
+                ? "fill-yellow-400 text-yellow-400"
+                : "text-muted-foreground/40 hover:text-yellow-400/60"
+            )}
+          />
+        </button>
+      ),
+    },
+    {
+      key: "name",
+      label: "Name",
+      render: (v) => (
+        <span className="font-medium">{v as string}</span>
+      ),
+    },
+    { key: "phone", label: "Phone" },
+    { key: "email", label: "Email", render: (v) => (v as string) || <span className="text-muted-foreground">--</span> },
+    { key: "address", label: "Address", render: (v) => <span className="max-w-48 truncate block">{v as string}</span> },
+    {
+      key: "serviceInterval",
+      label: "Interval",
+      filterable: true,
+      filterValue: (row) => {
+        const m = intervalOptions.find((o) => o.value === row.serviceInterval)
+        return m ? m.label : "None"
+      },
+      render: (_, customer) => {
+        const match = intervalOptions.find((o) => o.value === customer.serviceInterval)
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+              {match ? (
+                <Badge
+                  variant="secondary"
+                  className="cursor-pointer hover:bg-secondary/80"
+                >
+                  {match.label}
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="cursor-pointer text-muted-foreground hover:bg-accent"
+                >
+                  None
+                </Badge>
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+              {intervalOptions.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  className={cn(customer.serviceInterval === opt.value && "font-medium")}
+                  onClick={() => setInterval(customer, opt.value)}
+                >
+                  {opt.label}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {opt.value} days
+                  </span>
+                </DropdownMenuItem>
+              ))}
+              {customer.serviceInterval && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setInterval(customer, null)}
+                >
+                  Remove
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+    },
+    {
+      key: "_count",
+      label: "Services",
+      sortValue: (row) => row._count.serviceLogs,
+      render: (_, row) => row._count.serviceLogs,
+    },
+    {
+      key: "_actions",
+      label: "",
+      pinned: true,
+      className: "w-12",
+      render: (_, customer) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">Actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleEditCustomer(customer)
+              }}
+            >
+              <Pencil className="mr-2 size-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteClick(customer)
+              }}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-4">
@@ -140,115 +335,34 @@ export default function CustomersPage() {
         </Button>
       </div>
 
-      <div className="relative w-full sm:max-w-sm">
-        <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-        <Input
-          placeholder="Search by name, phone, or address..."
-          value={search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          className="pl-9"
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <DataTable
+          storageKey="customers"
+          columns={customerColumns}
+          data={customers}
+          rowKey="id"
+          searchable
+          searchPlaceholder="Search by name, phone, or address..."
+          selectable
+          onRowClick={(customer) => router.push(`/customers/${customer.id}`)}
+          renderBulkActions={(selected, clearSelection) => (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => handleBulkDelete(selected, clearSelection)}
+            >
+              <Trash2 className="size-4" />
+              Delete ({selected.length})
+            </Button>
+          )}
+          emptyMessage="No customers yet. Click 'Add Customer' to get started."
         />
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead className="hidden md:table-cell">Email</TableHead>
-              <TableHead className="hidden lg:table-cell">Address</TableHead>
-              <TableHead>Interval</TableHead>
-              <TableHead>Services</TableHead>
-              <TableHead className="w-10">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                  <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-40" /></TableCell>
-                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-48" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                </TableRow>
-              ))
-            ) : customers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
-                  {search
-                    ? "No customers match your search. Try different keywords."
-                    : "No customers yet. Click 'Add Customer' to get started."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              customers.map((customer) => (
-                <TableRow
-                  key={customer.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => router.push(`/customers/${customer.id}`)}
-                >
-                  <TableCell className="font-medium">{customer.name}</TableCell>
-                  <TableCell>{customer.phone}</TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {customer.email || <span className="text-muted-foreground">--</span>}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell max-w-[200px] truncate">
-                    {customer.address}
-                  </TableCell>
-                  <TableCell>
-                    {customer.serviceInterval
-                      ? `Every ${customer.serviceInterval} days`
-                      : <span className="text-muted-foreground">--</span>}
-                  </TableCell>
-                  <TableCell>{customer._count.serviceLogs}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreHorizontal className="size-4" />
-                          <span className="sr-only">Actions</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleEditCustomer(customer)
-                          }}
-                        >
-                          <Pencil className="mr-2 size-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteClick(customer)
-                          }}
-                        >
-                          <Trash2 className="mr-2 size-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      )}
 
       <CustomerDialog
         open={dialogOpen}
@@ -258,18 +372,35 @@ export default function CustomersPage() {
       />
 
       <Dialog
-        open={!!deleteTarget}
+        open={!!deleteTarget || bulkDeleteTargets.length > 0}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open) {
+            setDeleteTarget(null)
+            setBulkDeleteTargets([])
+          }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Customer</DialogTitle>
+            <DialogTitle>
+              {bulkDeleteTargets.length > 1
+                ? `Delete ${bulkDeleteTargets.length} Customers`
+                : "Delete Customer"}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
-              <strong>{deleteTarget?.name}</strong>? This action cannot be
-              undone.
+              {bulkDeleteTargets.length > 1 ? (
+                <>
+                  Are you sure you want to delete{" "}
+                  <strong>{bulkDeleteTargets.length} customers</strong>? This
+                  action cannot be undone.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete{" "}
+                  <strong>{deleteTarget?.name}</strong>? This action cannot be
+                  undone.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           {deleteError && (
@@ -280,14 +411,22 @@ export default function CustomersPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteTarget(null)}
+              onClick={() => {
+                setDeleteTarget(null)
+                setBulkDeleteTargets([])
+              }}
               disabled={isDeleting}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              onClick={handleDeleteConfirm}
+              onClick={() => {
+                handleDeleteConfirm().then(() => {
+                  bulkClearRef.current?.()
+                  bulkClearRef.current = null
+                })
+              }}
               disabled={isDeleting}
             >
               {isDeleting ? "Deleting..." : "Delete"}
