@@ -355,7 +355,7 @@ export function InvoiceFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh]">
+      <DialogContent className="max-w-3xl max-h-screen flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Edit Invoice" : "Create Invoice"}
@@ -372,7 +372,7 @@ export function InvoiceFormDialog({
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <ScrollArea className="max-h-[calc(90vh-10rem)] pr-4">
+          <ScrollArea className="flex-1 min-h-0 pr-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -558,70 +558,94 @@ export function InvoiceFormDialog({
                 ) : (
                   <div className="space-y-2">
                     {/* Column headers */}
-                    <div className="grid grid-cols-[1fr_120px_80px_90px_90px_32px] items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
-                      <span>Description</span>
-                      <span>Service Date</span>
-                      <span>Qty</span>
-                      <span>Rate</span>
-                      <span className="text-right">Amount</span>
-                      <span />
+                    <div className="hidden md:grid md:grid-cols-12 items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
+                      <span className="col-span-3">Description</span>
+                      <span className="col-span-3">Service Date</span>
+                      <span className="col-span-2">Qty</span>
+                      <span className="col-span-2">Rate</span>
+                      <span className="col-span-2 text-right">Amount</span>
                     </div>
 
                     {lineItems.map((item, index) => (
                       <div
                         key={index}
-                        className="grid grid-cols-[1fr_120px_80px_90px_90px_32px] items-center gap-2 rounded-md border p-2"
+                        className="grid grid-cols-1 md:grid-cols-12 items-start md:items-center gap-2 rounded-md border p-2"
                       >
-                        <Input
-                          value={item.description}
-                          onChange={(e) =>
-                            updateLineItem(index, "description", e.target.value)
-                          }
-                          placeholder="Description"
-                          className="h-8"
-                        />
-                        <Input
-                          type="date"
-                          value={item.serviceDate}
-                          onChange={(e) =>
-                            updateLineItem(
-                              index,
-                              "serviceDate",
-                              e.target.value
-                            )
-                          }
-                          className="h-8"
-                        />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          value={item.quantity}
-                          onChange={(e) =>
-                            updateLineItem(index, "quantity", e.target.value)
-                          }
-                          placeholder="1"
-                          className="h-8"
-                        />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={item.rate}
-                          onChange={(e) =>
-                            updateLineItem(index, "rate", e.target.value)
-                          }
-                          placeholder="0.00"
-                          className="h-8"
-                        />
-                        <div className="text-right text-sm font-medium tabular-nums">
-                          {formatCurrency(getLineItemAmount(item))}
+                        <div className="md:col-span-3">
+                          <Label className="md:hidden text-xs text-muted-foreground">Description</Label>
+                          <Input
+                            value={item.description}
+                            onChange={(e) =>
+                              updateLineItem(index, "description", e.target.value)
+                            }
+                            placeholder="Description"
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="md:col-span-3">
+                          <Label className="md:hidden text-xs text-muted-foreground">Service Date</Label>
+                          <Input
+                            type="date"
+                            value={item.serviceDate}
+                            onChange={(e) =>
+                              updateLineItem(
+                                index,
+                                "serviceDate",
+                                e.target.value
+                              )
+                            }
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label className="md:hidden text-xs text-muted-foreground">Qty</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateLineItem(index, "quantity", e.target.value)
+                            }
+                            placeholder="1"
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label className="md:hidden text-xs text-muted-foreground">Rate</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.rate}
+                            onChange={(e) =>
+                              updateLineItem(index, "rate", e.target.value)
+                            }
+                            placeholder="0.00"
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="md:col-span-2 flex items-center justify-between md:justify-end gap-2">
+                          <span className="md:hidden text-xs text-muted-foreground">Amount:</span>
+                          <div className="text-right text-sm font-medium tabular-nums">
+                            {formatCurrency(getLineItemAmount(item))}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 shrink-0 md:hidden"
+                            onClick={() => removeLineItem(index)}
+                          >
+                            <X className="size-4" />
+                            <span className="sr-only">Remove item</span>
+                          </Button>
                         </div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="size-8 shrink-0"
+                          className="hidden md:flex size-8 shrink-0"
                           onClick={() => removeLineItem(index)}
                         >
                           <X className="size-4" />

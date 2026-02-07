@@ -140,7 +140,7 @@ export default function CustomersPage() {
         </Button>
       </div>
 
-      <div className="relative max-w-sm">
+      <div className="relative w-full sm:max-w-sm">
         <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
         <Input
           placeholder="Search by name, phone, or address..."
@@ -182,15 +182,15 @@ export default function CustomersPage() {
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
                   {search
-                    ? "No customers match your search."
-                    : "No customers yet. Add your first customer to get started."}
+                    ? "No customers match your search. Try different keywords."
+                    : "No customers yet. Click 'Add Customer' to get started."}
                 </TableCell>
               </TableRow>
             ) : (
               customers.map((customer) => (
                 <TableRow
                   key={customer.id}
-                  className="cursor-pointer"
+                  className="cursor-pointer hover:bg-muted/50"
                   onClick={() => router.push(`/customers/${customer.id}`)}
                 >
                   <TableCell className="font-medium">{customer.name}</TableCell>

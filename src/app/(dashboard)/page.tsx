@@ -113,7 +113,7 @@ export default function DashboardPage() {
       <h1 className="text-3xl font-bold">Dashboard</h1>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => (
             <Card key={i}>
@@ -326,31 +326,31 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-lg border p-4">
+              <div className="rounded-lg border p-4 bg-muted/50">
                 <p className="text-muted-foreground text-sm">Draft</p>
                 <p className="text-2xl font-bold">
                   {data.invoicesByStatus.DRAFT}
                 </p>
               </div>
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
-                <p className="text-sm text-blue-600 dark:text-blue-400">Sent</p>
-                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              <div className="rounded-lg border p-4 bg-blue-50 dark:bg-blue-950/30">
+                <p className="text-muted-foreground text-sm">Sent</p>
+                <p className="text-2xl font-bold">
                   {data.invoicesByStatus.SENT}
                 </p>
               </div>
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950">
-                <p className="text-sm text-green-600 dark:text-green-400">
+              <div className="rounded-lg border p-4 bg-green-50 dark:bg-green-950/30">
+                <p className="text-muted-foreground text-sm">
                   Paid
                 </p>
-                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                <p className="text-2xl font-bold">
                   {data.invoicesByStatus.PAID}
                 </p>
               </div>
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950">
-                <p className="text-sm text-red-600 dark:text-red-400">
+              <div className="rounded-lg border p-4 bg-red-50 dark:bg-red-950/30">
+                <p className="text-muted-foreground text-sm">
                   Cancelled
                 </p>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                <p className="text-2xl font-bold">
                   {data.invoicesByStatus.CANCELLED}
                 </p>
               </div>

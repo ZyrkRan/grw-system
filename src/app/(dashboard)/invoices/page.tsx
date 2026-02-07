@@ -253,8 +253,8 @@ export default function InvoicesPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="relative w-56">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="relative w-full">
           <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
           <Input
             placeholder="Search invoice #..."
@@ -265,7 +265,7 @@ export default function InvoicesPage() {
         </div>
 
         <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Customers" />
           </SelectTrigger>
           <SelectContent>
@@ -279,7 +279,7 @@ export default function InvoicesPage() {
         </Select>
 
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Status" />
           </SelectTrigger>
           <SelectContent>
@@ -291,12 +291,12 @@ export default function InvoicesPage() {
           </SelectContent>
         </Select>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full">
           <Input
             type="date"
             value={filterDateFrom}
             onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="w-36"
+            className="w-full"
             placeholder="From"
           />
           <span className="text-muted-foreground text-sm">to</span>
@@ -304,7 +304,7 @@ export default function InvoicesPage() {
             type="date"
             value={filterDateTo}
             onChange={(e) => setFilterDateTo(e.target.value)}
-            className="w-36"
+            className="w-full"
             placeholder="To"
           />
         </div>
@@ -365,8 +365,8 @@ export default function InvoicesPage() {
               <TableRow>
                 <TableCell colSpan={9} className="h-24 text-center">
                   {hasFilters
-                    ? "No invoices match your filters."
-                    : "No invoices yet. Create your first invoice to get started."}
+                    ? "No invoices match your filters. Try different criteria."
+                    : "No invoices yet. Click 'Create Invoice' to get started."}
                 </TableCell>
               </TableRow>
             ) : (

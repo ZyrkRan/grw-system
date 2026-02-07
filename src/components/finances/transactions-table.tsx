@@ -314,8 +314,8 @@ export function TransactionsTable() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="relative w-56">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="relative w-full">
           <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
           <Input
             placeholder="Search transactions..."
@@ -326,7 +326,7 @@ export function TransactionsTable() {
         </div>
 
         <Select value={filterAccountId} onValueChange={setFilterAccountId}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Accounts" />
           </SelectTrigger>
           <SelectContent>
@@ -340,7 +340,7 @@ export function TransactionsTable() {
         </Select>
 
         <Select value={filterCategoryId} onValueChange={setFilterCategoryId}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Categories" />
           </SelectTrigger>
           <SelectContent>
@@ -360,7 +360,7 @@ export function TransactionsTable() {
         </Select>
 
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-32">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Types" />
           </SelectTrigger>
           <SelectContent>
@@ -371,7 +371,7 @@ export function TransactionsTable() {
         </Select>
 
         <Select value={filterMonth} onValueChange={setFilterMonth}>
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Months" />
           </SelectTrigger>
           <SelectContent>
@@ -389,12 +389,12 @@ export function TransactionsTable() {
           placeholder="Year"
           value={filterYear}
           onChange={(e) => setFilterYear(e.target.value)}
-          className="w-24"
+          className="w-full"
           min={2000}
           max={2100}
         />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full">
           <Checkbox
             id="uncategorized-filter"
             checked={filterUncategorized}
@@ -446,8 +446,8 @@ export function TransactionsTable() {
               <TableRow>
                 <TableCell colSpan={8} className="h-24 text-center">
                   {hasFilters
-                    ? "No transactions match your filters."
-                    : "No transactions yet. Add your first transaction to get started."}
+                    ? "No transactions match your filters. Try different criteria or connect a bank account."
+                    : "No transactions yet. Click 'Add Transaction' or connect a bank account to get started."}
                 </TableCell>
               </TableRow>
             ) : (

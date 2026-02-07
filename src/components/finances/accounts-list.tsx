@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { AccountDialog } from "@/components/finances/account-dialog"
+import { PlaidLinkButton } from "@/components/finances/plaid-link-button"
 
 interface PlaidItemInfo {
   institutionName: string | null
@@ -113,8 +114,6 @@ export function AccountsList() {
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
-  const [plaidInfoOpen, setPlaidInfoOpen] = useState(false)
-
   // Sync state per account
   const [syncingAccounts, setSyncingAccounts] = useState<Set<string>>(new Set())
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
@@ -232,10 +231,7 @@ export function AccountsList() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Bank Accounts</h2>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setPlaidInfoOpen(true)}>
-            <Landmark className="mr-2 size-4" />
-            Connect Bank (Plaid)
-          </Button>
+          <PlaidLinkButton onSuccess={fetchAccounts} />
           <Button onClick={handleAddAccount}>
             <Plus className="mr-2 size-4" />
             Add Account
@@ -412,43 +408,6 @@ export function AccountsList() {
         </DialogContent>
       </Dialog>
 
-      {/* Plaid Info Dialog */}
-      <Dialog open={plaidInfoOpen} onOpenChange={setPlaidInfoOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Connect Your Bank with Plaid</DialogTitle>
-            <DialogDescription>
-              Plaid integration is ready and will work once your Plaid API keys
-              are configured.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              To enable bank connections, add the following environment variables
-              to your <code className="rounded bg-muted px-1 py-0.5">.env</code> file:
-            </p>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>
-                <code className="rounded bg-muted px-1 py-0.5">PLAID_CLIENT_ID</code>
-              </li>
-              <li>
-                <code className="rounded bg-muted px-1 py-0.5">PLAID_SECRET</code>
-              </li>
-              <li>
-                <code className="rounded bg-muted px-1 py-0.5">PLAID_ENV</code>{" "}
-                (sandbox, development, or production)
-              </li>
-            </ul>
-            <p>
-              Once configured, you will be able to securely connect your bank
-              accounts and automatically sync transactions.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setPlaidInfoOpen(false)}>Got it</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

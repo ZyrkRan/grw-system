@@ -143,7 +143,7 @@ export default async function CustomerDetailPage({
         <CardContent>
           {customer.serviceLogs.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center text-sm">
-              No service logs recorded yet.
+              No service logs yet. Go to Services to log work for this customer.
             </p>
           ) : (
             <div className="rounded-md border">
@@ -212,7 +212,7 @@ export default async function CustomerDetailPage({
         <CardContent>
           {customer.invoices.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center text-sm">
-              No invoices created yet.
+              No invoices yet. Go to Invoices to create one for this customer.
             </p>
           ) : (
             <div className="rounded-md border">

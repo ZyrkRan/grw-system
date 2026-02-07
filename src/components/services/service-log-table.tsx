@@ -255,8 +255,8 @@ export function ServiceLogTable() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="relative w-56">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="relative w-full">
           <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
           <Input
             placeholder="Search services..."
@@ -267,7 +267,7 @@ export function ServiceLogTable() {
         </div>
 
         <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Customers" />
           </SelectTrigger>
           <SelectContent>
@@ -284,7 +284,7 @@ export function ServiceLogTable() {
           value={filterServiceTypeId}
           onValueChange={setFilterServiceTypeId}
         >
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Types" />
           </SelectTrigger>
           <SelectContent>
@@ -298,7 +298,7 @@ export function ServiceLogTable() {
         </Select>
 
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-32">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Status" />
           </SelectTrigger>
           <SelectContent>
@@ -312,7 +312,7 @@ export function ServiceLogTable() {
           value={filterPaymentStatus}
           onValueChange={setFilterPaymentStatus}
         >
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="All Payment" />
           </SelectTrigger>
           <SelectContent>
@@ -322,12 +322,12 @@ export function ServiceLogTable() {
           </SelectContent>
         </Select>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full">
           <Input
             type="date"
             value={filterDateFrom}
             onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="w-36"
+            className="w-full"
             placeholder="From"
           />
           <span className="text-muted-foreground text-sm">to</span>
@@ -335,7 +335,7 @@ export function ServiceLogTable() {
             type="date"
             value={filterDateTo}
             onChange={(e) => setFilterDateTo(e.target.value)}
-            className="w-36"
+            className="w-full"
             placeholder="To"
           />
         </div>
@@ -402,8 +402,8 @@ export function ServiceLogTable() {
                   filterPaymentStatus ||
                   filterDateFrom ||
                   filterDateTo
-                    ? "No services match your filters."
-                    : "No services yet. Add your first service to get started."}
+                    ? "No services match your filters. Try adjusting your search criteria."
+                    : "No services yet. Click 'Add Service' to log your first service."}
                 </TableCell>
               </TableRow>
             ) : (

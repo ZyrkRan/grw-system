@@ -163,9 +163,10 @@ export async function POST(request: NextRequest) {
       data: { added: addedCount, modified: modifiedCount, removed: removedCount },
     })
   } catch (error: unknown) {
-    console.error("Failed to sync Plaid transactions:", error)
-    const message =
-      error instanceof Error ? error.message : "Failed to sync transactions"
+    const plaidError = (error as { response?: { data?: unknown } })?.response?.data
+    console.error("Failed to sync Plaid transactions:", plaidError || error)
+    const plaidMsg = (plaidError as { error_message?: string })?.error_message
+    const message = plaidMsg || (error instanceof Error ? error.message : "Failed to sync transactions")
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 }
