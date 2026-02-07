@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, phone, email, address, serviceInterval } = body
+    const { name, phone, email, address, serviceInterval, isVip } = body
 
     if (!name || !phone || !address) {
       return NextResponse.json(
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
         email: email?.trim() || null,
         address: address.trim(),
         serviceInterval: serviceInterval ? parseInt(serviceInterval, 10) : null,
+        isVip: isVip === true,
         userId: session.user.id,
       },
     })

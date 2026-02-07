@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Loader2 } from "lucide-react"
 
 interface CustomerData {
@@ -13,6 +14,7 @@ interface CustomerData {
   email: string | null
   address: string
   serviceInterval: number | null
+  isVip?: boolean
 }
 
 interface CustomerFormProps {
@@ -28,6 +30,7 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
   const [serviceInterval, setServiceInterval] = useState(
     customer?.serviceInterval?.toString() ?? ""
   )
+  const [isVip, setIsVip] = useState(customer?.isVip ?? false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
 
@@ -58,6 +61,7 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
           email: email.trim() || null,
           address: address.trim(),
           serviceInterval: serviceInterval ? parseInt(serviceInterval, 10) : null,
+          isVip,
         }),
       })
 
@@ -138,6 +142,11 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
           onChange={(e) => setServiceInterval(e.target.value)}
           placeholder="e.g. 30"
         />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Switch id="isVip" checked={isVip} onCheckedChange={setIsVip} />
+        <Label htmlFor="isVip">VIP Customer</Label>
       </div>
 
       <div className="flex justify-end gap-2 pt-2">

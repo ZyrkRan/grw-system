@@ -90,6 +90,7 @@ model Customer {
   email           String?
   address         String
   serviceInterval Int?
+  isVip           Boolean  @default(false)
   userId          String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

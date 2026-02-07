@@ -16,6 +16,7 @@ interface CustomerData {
   email: string | null
   address: string
   serviceInterval: number | null
+  isVip?: boolean
 }
 
 interface CustomerDialogProps {

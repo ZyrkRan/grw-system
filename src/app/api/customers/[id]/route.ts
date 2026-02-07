@@ -73,7 +73,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const { name, phone, email, address, serviceInterval } = body
+    const { name, phone, email, address, serviceInterval, isVip } = body
 
     const customer = await prisma.customer.update({
       where: { id: customerId },
@@ -85,6 +85,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(serviceInterval !== undefined && {
           serviceInterval: serviceInterval ? parseInt(serviceInterval, 10) : null,
         }),
+        ...(isVip !== undefined && { isVip: isVip === true }),
       },
     })
 

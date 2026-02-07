@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Mail, MapPin, Phone, Clock } from "lucide-react"
+import { ArrowLeft, Mail, MapPin, Phone, Clock, Crown } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { Button } from "@/components/ui/button"
@@ -71,7 +71,15 @@ export default async function CustomerDetailPage({
           </Link>
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold">{customer.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{customer.name}</h1>
+            {customer.isVip && (
+              <Badge variant="secondary" className="gap-1">
+                <Crown className="size-3" />
+                VIP
+              </Badge>
+            )}
+          </div>
         </div>
         <CustomerEditButton
           customer={{
@@ -81,6 +89,7 @@ export default async function CustomerDetailPage({
             email: customer.email,
             address: customer.address,
             serviceInterval: customer.serviceInterval,
+            isVip: customer.isVip,
           }}
         />
       </div>
