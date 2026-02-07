@@ -67,7 +67,6 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
@@ -78,9 +77,9 @@ export function AppSidebar() {
 
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive}>
+                    <SidebarMenuButton asChild isActive={isActive} size="lg">
                       <Link href={item.url}>
-                        <item.icon />
+                        <item.icon className="size-5" />
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
