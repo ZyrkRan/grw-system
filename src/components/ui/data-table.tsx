@@ -157,6 +157,29 @@ function saveColumnState(storageKey: string, state: ColumnState[]) {
   }
 }
 
+function loadSortState(storageKey: string): SortState | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(`dt-sort-${storageKey}`)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveSortState(storageKey: string, state: SortState | null) {
+  if (typeof window === "undefined") return
+  try {
+    if (state) {
+      localStorage.setItem(`dt-sort-${storageKey}`, JSON.stringify(state))
+    } else {
+      localStorage.removeItem(`dt-sort-${storageKey}`)
+    }
+  } catch {
+    // ignore quota errors
+  }
+}
+
 // ---------------------------------------------------------------------------
 // SortableColumnItem — a single draggable row inside the Columns dropdown
 // ---------------------------------------------------------------------------
@@ -470,7 +493,15 @@ export function DataTable<T>({
     Object.values(columnFilters).some((s) => s.size > 0)
 
   // ---- Sorting state ----
-  const [sort, setSort] = React.useState<SortState | null>(null)
+  const [sort, setSort] = React.useState<SortState | null>(() => {
+    if (storageKey) return loadSortState(storageKey)
+    return null
+  })
+
+  // Persist sort on change
+  React.useEffect(() => {
+    if (storageKey) saveSortState(storageKey, sort)
+  }, [storageKey, sort])
 
   function handleSort(key: string) {
     setSort((prev) => {
