@@ -114,14 +114,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       )
     }
 
-    // Don't allow deleting Plaid-synced transactions
-    if (transaction.plaidTransactionId) {
-      return NextResponse.json(
-        { success: false, error: "Cannot delete Plaid-synced transactions. They are managed by Plaid sync." },
-        { status: 400 }
-      )
-    }
-
     await prisma.bankTransaction.delete({ where: { id: txnId } })
 
     return NextResponse.json({ success: true, data: { deleted: true } })

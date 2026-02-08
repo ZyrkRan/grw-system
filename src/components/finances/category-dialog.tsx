@@ -1,10 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
+
+const PRESET_COLORS = [
+  "#ef4444", "#f97316", "#f59e0b", "#eab308",
+  "#84cc16", "#22c55e", "#10b981", "#14b8a6",
+  "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
+  "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+  "#f43f5e", "#78716c", "#64748b", "#1e293b",
+]
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
@@ -161,19 +170,35 @@ export function CategoryDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="cat-color">Color *</Label>
-            <div className="flex items-center gap-2">
-              <div
-                className="size-8 shrink-0 rounded-md border"
-                style={{ backgroundColor: color || "#3b82f6" }}
-              />
-              <Input
-                id="cat-color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                placeholder="#3b82f6"
-              />
+            <Label>Color *</Label>
+            <div className="grid grid-cols-10 gap-1.5">
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={cn(
+                    "size-7 rounded-md transition-transform hover:scale-110 flex items-center justify-center",
+                    color === c && "ring-2 ring-ring ring-offset-1"
+                  )}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setColor(c)}
+                >
+                  {color === c && (
+                    <Check className="size-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" />
+                  )}
+                </button>
+              ))}
             </div>
+            {color && (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setColor("")}
+              >
+                <X className="size-3" />
+                Remove color
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const { name, type, isActive, accountNumber } = body
+    const { name, type, isActive, accountNumber, currentBalance } = body
 
     const validTypes = ["CHECKING", "SAVINGS", "CREDIT"]
     if (type && !validTypes.includes(type)) {
@@ -52,6 +52,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(type !== undefined && { type }),
         ...(isActive !== undefined && { isActive }),
         ...(accountNumber !== undefined && { accountNumber: accountNumber?.trim() || null }),
+        ...(currentBalance !== undefined && {
+          currentBalance: currentBalance === null || currentBalance === "" ? null : parseFloat(currentBalance),
+        }),
       },
     })
 
@@ -96,14 +99,11 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       )
     }
 
-    if (account._count.transactions > 0) {
-      return NextResponse.json(
-        { success: false, error: "Cannot delete account with existing transactions. Remove transactions first." },
-        { status: 400 }
-      )
-    }
-
-    await prisma.bankAccount.delete({ where: { id: accountId } })
+    // Delete transactions first, then the account
+    await prisma.$transaction([
+      prisma.bankTransaction.deleteMany({ where: { accountId } }),
+      prisma.bankAccount.delete({ where: { id: accountId } }),
+    ])
 
     return NextResponse.json({ success: true, data: { deleted: true } })
   } catch (error) {

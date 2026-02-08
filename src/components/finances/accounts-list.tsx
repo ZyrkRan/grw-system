@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Plus,
   Landmark,
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   CreditCard,
   Building2,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -37,9 +38,12 @@ import {
 } from "@/components/ui/dialog"
 import { AccountDialog } from "@/components/finances/account-dialog"
 import { PlaidLinkButton } from "@/components/finances/plaid-link-button"
+import { PlaidReconnectButton } from "@/components/finances/plaid-reconnect-button"
 
 interface PlaidItemInfo {
+  id: string
   institutionName: string | null
+  status: string
 }
 
 interface Account {
@@ -48,12 +52,17 @@ interface Account {
   accountNumber: string | null
   type: string
   isActive: boolean
+  currentBalance: string | number | null
   lastSyncedAt: string | null
   mask: string | null
   plaidAccountId: string | null
   plaidItemId: string | null
   _count: { transactions: number }
   plaidItem: PlaidItemInfo | null
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount)
 }
 
 function formatDate(dateString: string | null): string {
@@ -117,6 +126,7 @@ export function AccountsList() {
   // Sync state per account
   const [syncingAccounts, setSyncingAccounts] = useState<Set<string>>(new Set())
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
+  const [syncCooldowns, setSyncCooldowns] = useState<Record<string, number>>({})
 
   const fetchAccounts = useCallback(async () => {
     setIsLoading(true)
@@ -176,10 +186,42 @@ export function AccountsList() {
     }
   }
 
+  const cooldownIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+
+  useEffect(() => {
+    const intervals = cooldownIntervalsRef.current
+    return () => {
+      intervals.forEach((id) => clearInterval(id))
+      intervals.clear()
+    }
+  }, [])
+
+  function startCooldown(key: string) {
+    let remaining = 30
+    setSyncCooldowns((prev) => ({ ...prev, [key]: remaining }))
+    const interval = setInterval(() => {
+      remaining -= 1
+      if (remaining <= 0) {
+        clearInterval(interval)
+        cooldownIntervalsRef.current.delete(key)
+        setSyncCooldowns((prev) => {
+          const next = { ...prev }
+          delete next[key]
+          return next
+        })
+      } else {
+        setSyncCooldowns((prev) => ({ ...prev, [key]: remaining }))
+      }
+    }, 1000)
+    cooldownIntervalsRef.current.set(key, interval)
+  }
+
   async function handleSync(account: Account) {
     if (!account.plaidItemId) return
 
     const key = String(account.id)
+    if (syncCooldowns[key]) return
+
     setSyncingAccounts((prev) => new Set(prev).add(key))
     setSyncResults((prev) => {
       const next = { ...prev }
@@ -199,8 +241,11 @@ export function AccountsList() {
         const { added, modified, removed } = result.data
         setSyncResults((prev) => ({
           ...prev,
-          [key]: `Synced: ${added} added, ${modified} modified, ${removed} removed`,
+          [key]: `${added} added, ${modified} modified, ${removed} removed`,
         }))
+        fetchAccounts()
+      } else if (result.loginRequired) {
+        // Token expired — refetch accounts to show reconnect button
         fetchAccounts()
       } else {
         setSyncResults((prev) => ({
@@ -219,6 +264,7 @@ export function AccountsList() {
         next.delete(key)
         return next
       })
+      startCooldown(key)
     }
   }
 
@@ -272,6 +318,7 @@ export function AccountsList() {
             const key = String(account.id)
             const isSyncing = syncingAccounts.has(key)
             const syncResult = syncResults[key]
+            const cooldown = syncCooldowns[key]
             const isPlaid = !!account.plaidAccountId
 
             return (
@@ -329,27 +376,50 @@ export function AccountsList() {
                   <div className="text-muted-foreground">
                     {account._count.transactions} transaction{account._count.transactions !== 1 ? "s" : ""}
                   </div>
+                  {account.currentBalance !== null && account.currentBalance !== undefined && (
+                    <div className="text-muted-foreground font-medium">
+                      Balance: {formatCurrency(Number(account.currentBalance))}
+                    </div>
+                  )}
                   <div className="text-muted-foreground">
                     Last synced: {formatDate(account.lastSyncedAt)}
                   </div>
 
-                  {isPlaid && (
+                  {isPlaid && account.plaidItem?.status === "LOGIN_REQUIRED" && (
                     <div className="pt-2">
+                      <PlaidReconnectButton
+                        plaidItemId={account.plaidItem.id}
+                        onSuccess={fetchAccounts}
+                      />
+                    </div>
+                  )}
+
+                  {isPlaid && account.plaidItem?.status !== "LOGIN_REQUIRED" && (
+                    <div className="flex items-center gap-2 pt-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleSync(account)}
-                        disabled={isSyncing}
+                        disabled={isSyncing || !!cooldown}
+                        className="h-7 px-2.5 text-xs"
                       >
-                        <RefreshCw
-                          className={`mr-2 size-3.5 ${isSyncing ? "animate-spin" : ""}`}
-                        />
-                        {isSyncing ? "Syncing..." : "Sync"}
+                        {isSyncing ? (
+                          <RefreshCw className="mr-1.5 size-3 animate-spin" />
+                        ) : syncResult && !cooldown ? null : cooldown ? (
+                          <Check className="mr-1.5 size-3 text-green-500" />
+                        ) : (
+                          <RefreshCw className="mr-1.5 size-3" />
+                        )}
+                        {isSyncing
+                          ? "Syncing..."
+                          : cooldown
+                            ? `${cooldown}s`
+                            : "Sync"}
                       </Button>
                       {syncResult && (
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {syncResult}
-                        </p>
+                        </span>
                       )}
                     </div>
                   )}
@@ -380,10 +450,19 @@ export function AccountsList() {
             <DialogTitle>Delete Account</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete{" "}
-              <strong>{deleteTarget?.name}</strong>? This will also remove all
-              associated transactions. This action cannot be undone.
+              <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
+          {deleteTarget && deleteTarget._count.transactions > 0 && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              This account has{" "}
+              <strong>
+                {deleteTarget._count.transactions} transaction
+                {deleteTarget._count.transactions !== 1 ? "s" : ""}
+              </strong>{" "}
+              that will be permanently deleted.
+            </div>
+          )}
           {deleteError && (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {deleteError}

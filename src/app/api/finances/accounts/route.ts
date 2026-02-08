@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
           select: { transactions: true },
         },
         plaidItem: {
-          select: { institutionName: true },
+          select: { id: true, institutionName: true, status: true },
         },
       },
     })
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, type, accountNumber } = body
+    const { name, type, accountNumber, currentBalance } = body
 
     if (!name || !type) {
       return NextResponse.json(
@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
         accountNumber: accountNumber?.trim() || null,
         userId,
         isActive: true,
+        ...(currentBalance != null && currentBalance !== "" ? { currentBalance: parseFloat(currentBalance) } : {}),
       },
     })
 

@@ -29,29 +29,74 @@ export async function POST(request: NextRequest) {
 
     const { access_token: accessToken, item_id: itemId } = exchangeResponse.data
 
-    // Create PlaidItem and fetch accounts in a transaction
+    // Upsert PlaidItem and accounts in a transaction (handles reconnects)
     const result = await prisma.$transaction(async (tx) => {
-      // Create the PlaidItem
-      const plaidItem = await tx.plaidItem.create({
-        data: {
-          userId,
-          itemId,
-          accessToken,
-          institutionId: institutionId || null,
-          institutionName: institutionName || null,
-          status: "ACTIVE",
-        },
+      // Check if this Plaid item already exists for this user
+      const existingItem = await tx.plaidItem.findFirst({
+        where: { itemId, userId },
       })
+
+      let plaidItem
+      if (existingItem) {
+        plaidItem = await tx.plaidItem.update({
+          where: { id: existingItem.id },
+          data: {
+            accessToken,
+            status: "ACTIVE",
+            lastError: null,
+            institutionId: institutionId || existingItem.institutionId,
+            institutionName: institutionName || existingItem.institutionName,
+          },
+        })
+      } else {
+        plaidItem = await tx.plaidItem.create({
+          data: {
+            userId,
+            itemId,
+            accessToken,
+            institutionId: institutionId || null,
+            institutionName: institutionName || null,
+            status: "ACTIVE",
+          },
+        })
+      }
 
       // Fetch accounts from Plaid
       const accountsResponse = await plaidClient.accountsGet({
         access_token: accessToken,
       })
 
-      // Create BankAccount records for each Plaid account
+      // Upsert BankAccount records for each Plaid account
       const bankAccounts = await Promise.all(
-        accountsResponse.data.accounts.map((account) => {
+        accountsResponse.data.accounts.map(async (account) => {
           const accountType = mapPlaidAccountType(account.type)
+
+          const rawBalance = account.balances.current
+          const currentBalance =
+            rawBalance !== null && accountType === "CREDIT"
+              ? -Math.abs(rawBalance)
+              : rawBalance
+
+          const existingAccount = await tx.bankAccount.findFirst({
+            where: { plaidAccountId: account.account_id, userId },
+          })
+
+          if (existingAccount) {
+            return tx.bankAccount.update({
+              where: { id: existingAccount.id },
+              data: {
+                name: account.name,
+                type: accountType,
+                mask: account.mask || null,
+                officialName: account.official_name || null,
+                subtype: account.subtype || null,
+                plaidItemId: plaidItem.id,
+                isActive: true,
+                currentBalance,
+              },
+            })
+          }
+
           return tx.bankAccount.create({
             data: {
               name: account.name,
@@ -63,6 +108,7 @@ export async function POST(request: NextRequest) {
               subtype: account.subtype || null,
               userId,
               isActive: true,
+              currentBalance,
             },
           })
         })

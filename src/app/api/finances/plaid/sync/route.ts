@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { TransactionType } from "@/generated/prisma"
 import { plaidClient } from "@/lib/plaid"
 import { RemovedTransaction, Transaction } from "plaid"
 
@@ -12,9 +13,11 @@ export async function POST(request: NextRequest) {
 
   const userId = session.user!.id!
 
+  let plaidItemId: string | undefined
+
   try {
     const body = await request.json()
-    const { plaidItemId } = body
+    plaidItemId = body.plaidItemId
 
     if (!plaidItemId) {
       return NextResponse.json(
@@ -64,29 +67,34 @@ export async function POST(request: NextRequest) {
       cursor = response.data.next_cursor
     }
 
+    // Fetch fresh balances from Plaid
+    const balanceResponse = await plaidClient.accountsBalanceGet({
+      access_token: plaidItem.accessToken,
+    })
+    const plaidBalances = new Map<string, number | null>()
+    for (const acct of balanceResponse.data.accounts) {
+      plaidBalances.set(acct.account_id, acct.balances.current)
+    }
+
     // Process in a database transaction
     let addedCount = 0
     let modifiedCount = 0
     let removedCount = 0
 
     await prisma.$transaction(async (tx) => {
-      // Process added transactions
-      for (const txn of added) {
-        const accountId = accountMap.get(txn.account_id)
-        if (!accountId) continue
-
-        const date = new Date(txn.date)
-        // Plaid: positive = debit (outflow), negative = credit (inflow)
-        const amount = Math.abs(txn.amount)
-        const type = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
-
-        await tx.bankTransaction.create({
-          data: {
+      // Process added transactions — bulk insert
+      const addedData = added
+        .filter((txn) => accountMap.has(txn.account_id))
+        .map((txn) => {
+          const date = new Date(txn.date)
+          const amount = Math.abs(txn.amount)
+          const type: TransactionType = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
+          return {
             date,
             description: txn.name || txn.merchant_name || "Unknown",
             amount,
             type,
-            accountId,
+            accountId: accountMap.get(txn.account_id)!,
             userId,
             statementMonth: date.getMonth() + 1,
             statementYear: date.getFullYear(),
@@ -95,63 +103,92 @@ export async function POST(request: NextRequest) {
             plaidTransactionId: txn.transaction_id,
             plaidStatus: txn.pending ? "pending" : "posted",
             rawPlaidData: JSON.parse(JSON.stringify(txn)),
-          },
+          }
         })
-        addedCount++
+
+      if (addedData.length > 0) {
+        await tx.bankTransaction.createMany({ data: addedData })
+        addedCount = addedData.length
       }
 
-      // Process modified transactions
-      for (const txn of modified) {
-        const existing = await tx.bankTransaction.findUnique({
-          where: { plaidTransactionId: txn.transaction_id },
-        })
-        if (!existing) continue
+      // Process modified transactions — concurrent updates
+      if (modified.length > 0) {
+        const updateResults = await Promise.all(
+          modified.map(async (txn) => {
+            const date = new Date(txn.date)
+            const amount = Math.abs(txn.amount)
+            const type = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
 
-        const date = new Date(txn.date)
-        const amount = Math.abs(txn.amount)
-        const type = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
-
-        await tx.bankTransaction.update({
-          where: { plaidTransactionId: txn.transaction_id },
-          data: {
-            date,
-            description: txn.name || txn.merchant_name || "Unknown",
-            amount,
-            type,
-            statementMonth: date.getMonth() + 1,
-            statementYear: date.getFullYear(),
-            isPending: txn.pending,
-            merchantName: txn.merchant_name || null,
-            plaidStatus: txn.pending ? "pending" : "posted",
-            rawPlaidData: JSON.parse(JSON.stringify(txn)),
-          },
-        })
-        modifiedCount++
-      }
-
-      // Process removed transactions
-      for (const txn of removed) {
-        if (!txn.transaction_id) continue
-        const existing = await tx.bankTransaction.findUnique({
-          where: { plaidTransactionId: txn.transaction_id },
-        })
-        if (existing) {
-          await tx.bankTransaction.delete({
-            where: { plaidTransactionId: txn.transaction_id },
+            try {
+              await tx.bankTransaction.update({
+                where: { plaidTransactionId: txn.transaction_id },
+                data: {
+                  date,
+                  description: txn.name || txn.merchant_name || "Unknown",
+                  amount,
+                  type,
+                  statementMonth: date.getMonth() + 1,
+                  statementYear: date.getFullYear(),
+                  isPending: txn.pending,
+                  merchantName: txn.merchant_name || null,
+                  plaidStatus: txn.pending ? "pending" : "posted",
+                  rawPlaidData: JSON.parse(JSON.stringify(txn)),
+                },
+              })
+              return true
+            } catch {
+              // Transaction doesn't exist, skip
+              return false
+            }
           })
-          removedCount++
-        }
+        )
+        modifiedCount = updateResults.filter(Boolean).length
+      }
+
+      // Process removed transactions — bulk delete
+      const removedIds = removed
+        .map((txn) => txn.transaction_id)
+        .filter((id): id is string => !!id)
+
+      if (removedIds.length > 0) {
+        const deleteResult = await tx.bankTransaction.deleteMany({
+          where: { plaidTransactionId: { in: removedIds } },
+        })
+        removedCount = deleteResult.count
       }
 
       // Update PlaidItem cursor and lastSuccessfulSync
+      const now = new Date()
       await tx.plaidItem.update({
         where: { id: plaidItemId },
         data: {
           cursor: cursor,
-          lastSuccessfulSync: new Date(),
+          lastSuccessfulSync: now,
         },
       })
-    })
+
+      // Update lastSyncedAt on all bank accounts for this Plaid item
+      const bankAccountIds = Array.from(accountMap.values())
+      if (bankAccountIds.length > 0) {
+        await tx.bankAccount.updateMany({
+          where: { id: { in: bankAccountIds } },
+          data: { lastSyncedAt: now },
+        })
+      }
+
+      // Update currentBalance for each account from Plaid balances
+      for (const ba of plaidItem.bankAccounts) {
+        if (ba.plaidAccountId && plaidBalances.has(ba.plaidAccountId)) {
+          const rawBal = plaidBalances.get(ba.plaidAccountId) ?? null
+          const currentBalance =
+            rawBal !== null && ba.type === "CREDIT" ? -Math.abs(rawBal) : rawBal
+          await tx.bankAccount.update({
+            where: { id: ba.id },
+            data: { currentBalance },
+          })
+        }
+      }
+    }, { timeout: 15000 })
 
     // Apply categorization rules to newly added uncategorized transactions
     if (addedCount > 0) {
@@ -165,7 +202,25 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     const plaidError = (error as { response?: { data?: unknown } })?.response?.data
     console.error("Failed to sync Plaid transactions:", plaidError || error)
+
+    const plaidErrorCode = (plaidError as { error_code?: string })?.error_code
     const plaidMsg = (plaidError as { error_message?: string })?.error_message
+
+    // Detect expired credentials — mark item for reconnection
+    if (plaidErrorCode === "ITEM_LOGIN_REQUIRED" && plaidItemId) {
+      await prisma.plaidItem.update({
+        where: { id: plaidItemId },
+        data: {
+          status: "LOGIN_REQUIRED",
+          lastError: plaidMsg || "Login required — please reconnect your bank.",
+        },
+      })
+      return NextResponse.json(
+        { success: false, error: "LOGIN_REQUIRED", loginRequired: true },
+        { status: 400 }
+      )
+    }
+
     const message = plaidMsg || (error instanceof Error ? error.message : "Failed to sync transactions")
     return NextResponse.json(
       { success: false, error: message },

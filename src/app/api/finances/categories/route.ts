@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     // Include user-owned categories and default categories (userId is null)
     const categories = await prisma.transactionCategory.findMany({
       where: {
+        parentId: null,
         OR: [
           { userId },
           { userId: null, isDefault: true },

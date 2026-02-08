@@ -3,14 +3,11 @@
 import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
-  Pencil,
-  Trash2,
   ArrowRight,
-  FolderOpen,
+  Trash2,
   Tag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -23,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { CategoryDialog } from "@/components/finances/category-dialog"
 import { RuleDialog } from "@/components/finances/rule-dialog"
+import { SortableCategoryList } from "@/components/finances/sortable-category-list"
 
 interface CategoryChild {
   id: number
@@ -203,6 +201,51 @@ export function CategoriesManager() {
     }
   }
 
+  async function handleReorder(items: { id: number; position: number; parentId: number | null }[]) {
+    const res = await fetch("/api/finances/categories/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    })
+    const result = await res.json()
+    if (!result.success) throw new Error(result.error)
+    // Silently refetch without setting isLoadingCategories to avoid unmounting the sortable list
+    const refreshRes = await fetch("/api/finances/categories")
+    const refreshResult = await refreshRes.json()
+    if (refreshResult.success) {
+      setCategories(refreshResult.data)
+    }
+  }
+
+  async function handleColorChange(categoryId: number, color: string) {
+    // Optimistic update
+    setCategories((prev) =>
+      prev.map((c) => {
+        if (c.id === categoryId) return { ...c, color }
+        return {
+          ...c,
+          children: c.children.map((ch) =>
+            ch.id === categoryId ? { ...ch, color } : ch
+          ),
+        }
+      })
+    )
+
+    try {
+      const res = await fetch(`/api/finances/categories/${categoryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ color }),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        fetchCategories() // rollback on failure
+      }
+    } catch {
+      fetchCategories() // rollback on failure
+    }
+  }
+
   function handleCategorySuccess() {
     fetchCategories()
   }
@@ -242,89 +285,13 @@ export function CategoriesManager() {
             </p>
           </div>
         ) : (
-          <div className="space-y-1">
-            {categories.map((category) => (
-              <div key={category.id}>
-                {/* Parent / top-level category */}
-                <div className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/50">
-                  <span
-                    className="inline-block size-4 shrink-0 rounded-full"
-                    style={{ backgroundColor: category.color }}
-                  />
-                  <span className="font-medium">{category.name}</span>
-                  {category.isGroup && (
-                    <Badge variant="secondary" className="text-xs">
-                      <FolderOpen className="mr-1 size-3" />
-                      Group
-                    </Badge>
-                  )}
-                  <span className="ml-auto text-sm text-muted-foreground">
-                    {category._count.transactions} txn{category._count.transactions !== 1 ? "s" : ""}
-                  </span>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      onClick={() => handleEditCategory(category)}
-                    >
-                      <Pencil className="size-3.5" />
-                      <span className="sr-only">Edit</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      onClick={() => handleDeleteCategoryClick(category)}
-                    >
-                      <Trash2 className="size-3.5" />
-                      <span className="sr-only">Delete</span>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Children */}
-                {category.children &&
-                  category.children.length > 0 &&
-                  category.children.map((child) => (
-                    <div
-                      key={child.id}
-                      className="ml-8 flex items-center gap-3 rounded-md border-l-2 border-b p-3 hover:bg-muted/50"
-                      style={{ borderLeftColor: category.color }}
-                    >
-                      <span
-                        className="inline-block size-3 shrink-0 rounded-full"
-                        style={{ backgroundColor: child.color }}
-                      />
-                      <span className="text-sm">{child.name}</span>
-                      <span className="ml-auto text-sm text-muted-foreground">
-                        {child._count.transactions} txn{child._count.transactions !== 1 ? "s" : ""}
-                      </span>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => handleEditCategory(child)}
-                        >
-                          <Pencil className="size-3.5" />
-                          <span className="sr-only">Edit</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => handleDeleteCategoryClick(child)}
-                        >
-                          <Trash2 className="size-3.5" />
-                          <span className="sr-only">Delete</span>
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            ))}
-          </div>
+          <SortableCategoryList
+            categories={categories}
+            onReorder={handleReorder}
+            onEdit={handleEditCategory}
+            onDelete={handleDeleteCategoryClick}
+            onColorChange={handleColorChange}
+          />
         )}
       </div>
 

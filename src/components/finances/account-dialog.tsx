@@ -25,6 +25,9 @@ interface AccountData {
   name: string
   type: string
   accountNumber?: string | null
+  mask?: string | null
+  plaidAccountId?: string | null
+  currentBalance?: string | number | null
 }
 
 interface AccountDialogProps {
@@ -45,8 +48,11 @@ export function AccountDialog({
   const [name, setName] = useState("")
   const [type, setType] = useState("")
   const [accountNumber, setAccountNumber] = useState("")
+  const [currentBalance, setCurrentBalance] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
+
+  const isPlaid = !!account?.plaidAccountId
 
   useEffect(() => {
     if (!open) return
@@ -54,11 +60,17 @@ export function AccountDialog({
     if (account) {
       setName(account.name)
       setType(account.type)
-      setAccountNumber(account.accountNumber ?? "")
+      setAccountNumber(
+        account.plaidAccountId
+          ? account.mask ? `****${account.mask}` : ""
+          : account.accountNumber ?? ""
+      )
+      setCurrentBalance(account.currentBalance != null ? String(account.currentBalance) : "")
     } else {
       setName("")
       setType("")
       setAccountNumber("")
+      setCurrentBalance("")
     }
     setError("")
   }, [open, account])
@@ -89,7 +101,8 @@ export function AccountDialog({
         body: JSON.stringify({
           name: name.trim(),
           type,
-          accountNumber: accountNumber.trim() || null,
+          ...(!isPlaid && { accountNumber: accountNumber.trim() || null }),
+          ...(!isPlaid && { currentBalance: currentBalance || null }),
         }),
       })
 
@@ -161,8 +174,31 @@ export function AccountDialog({
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
               placeholder="Optional"
+              disabled={isPlaid}
             />
+            {isPlaid && (
+              <p className="text-xs text-muted-foreground">
+                Managed by Plaid — cannot be modified.
+              </p>
+            )}
           </div>
+
+          {!isPlaid && (
+            <div className="space-y-2">
+              <Label htmlFor="acc-balance">Current Balance</Label>
+              <Input
+                id="acc-balance"
+                type="number"
+                step="0.01"
+                value={currentBalance}
+                onChange={(e) => setCurrentBalance(e.target.value)}
+                placeholder="Optional"
+              />
+              <p className="text-xs text-muted-foreground">
+                Anchors the balance chart to real values.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="submit" disabled={isSubmitting}>
