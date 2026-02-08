@@ -121,6 +121,10 @@ export interface DataTableProps<T> {
   searchPlaceholder?: string
   /** Default rows per page — defaults to 10 */
   defaultPageSize?: number
+  /** Return inline styles for a row (e.g. colored left border) */
+  rowStyle?: (row: T) => React.CSSProperties | undefined
+  /** Render a card for each row on mobile (below md). When provided, the table is hidden below md and cards are shown instead. */
+  renderCard?: (row: T, meta: { isSelected: boolean; onToggle: () => void }) => React.ReactNode
   emptyMessage?: string
   className?: string
 }
@@ -175,6 +179,29 @@ function saveSortState(storageKey: string, state: SortState | null) {
     } else {
       localStorage.removeItem(`dt-sort-${storageKey}`)
     }
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function loadPageSize(storageKey: string): number | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(`dt-pagesize-${storageKey}`)
+    if (raw) {
+      const parsed = parseInt(raw, 10)
+      if (PAGE_SIZE_OPTIONS.includes(parsed as (typeof PAGE_SIZE_OPTIONS)[number])) return parsed
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function savePageSize(storageKey: string, size: number) {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(`dt-pagesize-${storageKey}`, String(size))
   } catch {
     // ignore quota errors
   }
@@ -350,6 +377,8 @@ export function DataTable<T>({
   searchable = false,
   searchPlaceholder = "Search...",
   defaultPageSize = 10,
+  renderCard,
+  rowStyle,
   emptyMessage = "No data.",
   className,
 }: DataTableProps<T>) {
@@ -516,22 +545,39 @@ export function DataTable<T>({
 
   // ---- Selection state ----
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const lastClickedId = React.useRef<string | null>(null)
+  const shiftHeld = React.useRef(false)
 
   // Clear selection when data changes
   React.useEffect(() => {
     setSelectedIds(new Set())
+    lastClickedId.current = null
   }, [data])
 
   function toggleRow(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
+    if (shiftHeld.current && lastClickedId.current != null) {
+      // Shift+click range selection
+      const ids = paginatedData.map((row) => getRowId(row, rowKey))
+      const lastIdx = ids.indexOf(lastClickedId.current)
+      const currIdx = ids.indexOf(id)
+      if (lastIdx !== -1 && currIdx !== -1) {
+        const start = Math.min(lastIdx, currIdx)
+        const end = Math.max(lastIdx, currIdx)
+        const rangeIds = ids.slice(start, end + 1)
+        setSelectedIds((prev) => new Set([...prev, ...rangeIds]))
       }
-      return next
-    })
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) {
+          next.delete(id)
+        } else {
+          next.add(id)
+        }
+        return next
+      })
+    }
+    lastClickedId.current = id
   }
 
   function toggleAll() {
@@ -550,6 +596,7 @@ export function DataTable<T>({
 
   function clearSelection() {
     setSelectedIds(new Set())
+    lastClickedId.current = null
   }
 
   const selectedRows = React.useMemo(
@@ -601,8 +648,19 @@ export function DataTable<T>({
   }, [filteredData, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Pagination state ----
-  const [pageSize, setPageSize] = React.useState(defaultPageSize)
+  const [pageSize, setPageSize] = React.useState(() => {
+    if (storageKey) {
+      const saved = loadPageSize(storageKey)
+      if (saved) return saved
+    }
+    return defaultPageSize
+  })
   const [page, setPage] = React.useState(0)
+
+  // Persist pageSize on change
+  React.useEffect(() => {
+    if (storageKey) savePageSize(storageKey, pageSize)
+  }, [storageKey, pageSize])
 
   // Reset to first page when data, filters, or sort changes
   React.useEffect(() => {
@@ -747,8 +805,32 @@ export function DataTable<T>({
         </div>
       </div>
 
+      {/* Mobile card view */}
+      {renderCard && (
+        <div className="space-y-2 md:hidden">
+          {paginatedData.length === 0 ? (
+            <div className="rounded-md border py-12 text-center text-sm text-muted-foreground">
+              {emptyMessage}
+            </div>
+          ) : (
+            paginatedData.map((row) => {
+              const id = getRowId(row, rowKey)
+              const isSelected = selectedIds.has(id)
+              return (
+                <div key={id} data-state={isSelected ? "selected" : undefined}>
+                  {renderCard(row, {
+                    isSelected,
+                    onToggle: () => toggleRow(id),
+                  })}
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
       {/* Table */}
-      <div className="rounded-md border">
+      <div className={cn("rounded-md border", renderCard && "hidden md:block")}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -817,14 +899,18 @@ export function DataTable<T>({
                     key={id}
                     data-state={isSelected ? "selected" : undefined}
                     className={cn(onRowClick && "cursor-pointer")}
+                    style={rowStyle?.(row)}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                   >
                     {selectable && (
                       <TableCell className="w-10">
                         <Checkbox
                           checked={isSelected}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            shiftHeld.current = e.shiftKey
+                          }}
                           onCheckedChange={() => toggleRow(id)}
-                          onClick={(e) => e.stopPropagation()}
                           aria-label={`Select row ${id}`}
                         />
                       </TableCell>

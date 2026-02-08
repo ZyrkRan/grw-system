@@ -6,8 +6,9 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
-  Tag,
   Loader2,
+  X,
+  Tags,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,15 +16,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -32,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { TransactionDialog } from "@/components/finances/transaction-dialog"
 
@@ -82,7 +79,11 @@ function formatDate(dateString: string): string {
   })
 }
 
-export function TransactionsTable() {
+interface TransactionsTableProps {
+  accountId?: string
+}
+
+export function TransactionsTable({ accountId }: TransactionsTableProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<CategoryRef[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -99,10 +100,8 @@ export function TransactionsTable() {
   const bulkClearRef = useRef<(() => void) | null>(null)
 
   // Quick category assign
-  const [categoryAssignTarget, setCategoryAssignTarget] =
-    useState<Transaction | null>(null)
-  const [assignCategoryId, setAssignCategoryId] = useState("")
-  const [isAssigning, setIsAssigning] = useState(false)
+  const [assigningTxnId, setAssigningTxnId] = useState<number | null>(null)
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false)
 
   // Fetch categories for assign dialog
   useEffect(() => {
@@ -132,7 +131,10 @@ export function TransactionsTable() {
   const fetchTransactions = useCallback(async () => {
     setIsLoading(true)
     try {
-      const res = await fetch("/api/finances/transactions")
+      const url = accountId && accountId !== "all"
+        ? `/api/finances/transactions?accountId=${accountId}`
+        : "/api/finances/transactions"
+      const res = await fetch(url)
       const result = await res.json()
 
       if (result.success) {
@@ -143,7 +145,7 @@ export function TransactionsTable() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [accountId])
 
   useEffect(() => {
     fetchTransactions()
@@ -200,41 +202,47 @@ export function TransactionsTable() {
     setDeleteError("")
   }
 
-  function handleCategoryAssignClick(transaction: Transaction) {
-    setCategoryAssignTarget(transaction)
-    setAssignCategoryId(
-      transaction.category ? String(transaction.category.id) : ""
-    )
-  }
-
-  async function handleCategoryAssignConfirm() {
-    if (!categoryAssignTarget) return
-    setIsAssigning(true)
-
+  async function handleCategoryAssign(transactionId: number, categoryId: number | null) {
+    setAssigningTxnId(transactionId)
     try {
-      const res = await fetch(
-        `/api/finances/transactions/${categoryAssignTarget.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            categoryId:
-              assignCategoryId && assignCategoryId !== "none"
-                ? parseInt(assignCategoryId, 10)
-                : null,
-          }),
-        }
-      )
+      const res = await fetch(`/api/finances/transactions/${transactionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryId }),
+      })
       const result = await res.json()
-
       if (result.success) {
-        setCategoryAssignTarget(null)
         fetchTransactions()
       }
     } catch {
       console.error("Failed to assign category")
     } finally {
-      setIsAssigning(false)
+      setAssigningTxnId(null)
+    }
+  }
+
+  async function handleBulkCategoryAssign(
+    selected: Transaction[],
+    categoryId: number | null,
+    clearSelection: () => void
+  ) {
+    setIsBulkAssigning(true)
+    try {
+      await Promise.all(
+        selected.map((txn) =>
+          fetch(`/api/finances/transactions/${txn.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ categoryId }),
+          }).then((r) => r.json())
+        )
+      )
+      clearSelection()
+      fetchTransactions()
+    } catch {
+      console.error("Failed to bulk assign category")
+    } finally {
+      setIsBulkAssigning(false)
     }
   }
 
@@ -280,9 +288,7 @@ export function TransactionsTable() {
     {
       key: "account",
       label: "Account",
-      filterable: true,
       sortValue: (row) => row.account.name,
-      filterValue: (row) => row.account.name,
       render: (_, row) => row.account.name,
     },
     {
@@ -291,18 +297,64 @@ export function TransactionsTable() {
       filterable: true,
       filterValue: (row) => row.category?.name ?? "Uncategorized",
       sortValue: (row) => row.category?.name ?? "",
-      render: (_, row) =>
-        row.category ? (
-          <span className="flex items-center gap-2">
-            <span
-              className="inline-block size-3 shrink-0 rounded-full"
-              style={{ backgroundColor: row.category.color }}
-            />
-            {row.category.name}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">Uncategorized</span>
-        ),
+      render: (_, row) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            {row.category ? (
+              <button type="button" className="cursor-pointer">
+                <Badge variant="outline" className="gap-1.5 hover:bg-accent">
+                  {assigningTxnId === row.id ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <span
+                      className="inline-block size-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: row.category.color }}
+                    />
+                  )}
+                  {row.category.name}
+                </Badge>
+              </button>
+            ) : (
+              <button type="button" className="cursor-pointer">
+                <Badge variant="outline" className="text-muted-foreground hover:bg-accent">
+                  {assigningTxnId === row.id ? (
+                    <Loader2 className="mr-1 size-3 animate-spin" />
+                  ) : null}
+                  Uncategorized
+                </Badge>
+              </button>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+            <DropdownMenuLabel>Assign Category</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                handleCategoryAssign(row.id, null)
+              }}
+            >
+              <X className="mr-2 size-3.5 text-muted-foreground" />
+              <span className="text-muted-foreground">No Category</span>
+            </DropdownMenuItem>
+            {categories.map((c) => (
+              <DropdownMenuItem
+                key={c.id}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleCategoryAssign(row.id, c.id)
+                }}
+              >
+                <span
+                  className="mr-2 inline-block size-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: c.color }}
+                />
+                {c.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
     },
     {
       key: "amount",
@@ -340,42 +392,31 @@ export function TransactionsTable() {
       label: "",
       pinned: true,
       className: "w-12",
-      render: (_, txn) => {
-        const isPlaid = !!txn.plaidTransactionId
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <MoreHorizontal className="size-4" />
-                <span className="sr-only">Actions</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => handleCategoryAssignClick(txn)}
-              >
-                <Tag className="mr-2 size-4" />
-                Edit Category
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleEditTransaction(txn)}
-              >
-                <Pencil className="mr-2 size-4" />
-                Edit
-              </DropdownMenuItem>
-              {!isPlaid && (
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => handleDeleteClick(txn)}
-                >
-                  <Trash2 className="mr-2 size-4" />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )
-      },
+      render: (_, txn) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8">
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">Actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() => handleEditTransaction(txn)}
+            >
+              <Pencil className="mr-2 size-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => handleDeleteClick(txn)}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
     },
   ]
 
@@ -399,24 +440,196 @@ export function TransactionsTable() {
           columns={transactionColumns}
           data={transactions}
           rowKey="id"
+          rowStyle={(row) =>
+            row.category?.color
+              ? { borderLeft: `4px solid ${row.category.color}` }
+              : undefined
+          }
           searchable
           searchPlaceholder="Search by description or merchant..."
           selectable
-          renderBulkActions={(selected, clearSelection) => {
-            const deletable = selected.filter((txn) => !txn.plaidTransactionId)
-            return (
+          renderCard={(txn, { isSelected, onToggle }) => (
+            <div
+              className={`rounded-md border p-3 space-y-1.5 ${isSelected ? "bg-muted" : ""}`}
+              style={
+                txn.category?.color
+                  ? { borderLeft: `4px solid ${txn.category.color}` }
+                  : undefined
+              }
+            >
+              {/* Row 1: checkbox + description + actions */}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={onToggle}
+                  className="mt-0.5"
+                  aria-label={`Select transaction ${txn.description}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium truncate">{txn.description}</span>
+                    {txn.isPending && (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500 text-amber-600 text-xs shrink-0"
+                      >
+                        Pending
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7 shrink-0 -mt-0.5">
+                      <MoreHorizontal className="size-4" />
+                      <span className="sr-only">Actions</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleEditTransaction(txn)}>
+                      <Pencil className="mr-2 size-4" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => handleDeleteClick(txn)}
+                    >
+                      <Trash2 className="mr-2 size-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              {/* Row 2: merchant + date */}
+              <div className="pl-7 text-sm text-muted-foreground">
+                {txn.merchantName && <>{txn.merchantName} &middot; </>}
+                {formatDate(txn.date)}
+              </div>
+              {/* Row 3: account */}
+              <div className="pl-7 text-sm text-muted-foreground">
+                {txn.account.name}
+              </div>
+              {/* Row 4: category + amount */}
+              <div className="pl-7 flex items-center justify-between">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    {txn.category ? (
+                      <button type="button" className="cursor-pointer">
+                        <Badge variant="outline" className="gap-1.5 hover:bg-accent">
+                          {assigningTxnId === txn.id ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <span
+                              className="inline-block size-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: txn.category.color }}
+                            />
+                          )}
+                          {txn.category.name}
+                        </Badge>
+                      </button>
+                    ) : (
+                      <button type="button" className="cursor-pointer">
+                        <Badge variant="outline" className="text-muted-foreground hover:bg-accent">
+                          {assigningTxnId === txn.id ? (
+                            <Loader2 className="mr-1 size-3 animate-spin" />
+                          ) : null}
+                          Uncategorized
+                        </Badge>
+                      </button>
+                    )}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                    <DropdownMenuLabel>Assign Category</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCategoryAssign(txn.id, null)
+                      }}
+                    >
+                      <X className="mr-2 size-3.5 text-muted-foreground" />
+                      <span className="text-muted-foreground">No Category</span>
+                    </DropdownMenuItem>
+                    {categories.map((c) => (
+                      <DropdownMenuItem
+                        key={c.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleCategoryAssign(txn.id, c.id)
+                        }}
+                      >
+                        <span
+                          className="mr-2 inline-block size-3 shrink-0 rounded-full"
+                          style={{ backgroundColor: c.color }}
+                        />
+                        {c.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <span
+                  className={`text-sm font-medium whitespace-nowrap ${
+                    txn.type === "INFLOW" ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {txn.type === "INFLOW" ? "+" : "-"}
+                  {formatCurrency(txn.amount)}
+                </span>
+              </div>
+            </div>
+          )}
+          renderBulkActions={(selected, clearSelection) => (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={isBulkAssigning}
+                  >
+                    {isBulkAssigning ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Tags className="size-4" />
+                    )}
+                    Set Category ({selected.length})
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                  <DropdownMenuLabel>Assign Category</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => handleBulkCategoryAssign(selected, null, clearSelection)}
+                  >
+                    <X className="mr-2 size-3.5 text-muted-foreground" />
+                    <span className="text-muted-foreground">No Category</span>
+                  </DropdownMenuItem>
+                  {categories.map((c) => (
+                    <DropdownMenuItem
+                      key={c.id}
+                      onClick={() => handleBulkCategoryAssign(selected, c.id, clearSelection)}
+                    >
+                      <span
+                        className="mr-2 inline-block size-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: c.color }}
+                      />
+                      {c.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="destructive"
                 size="sm"
                 className="gap-1.5"
-                disabled={deletable.length === 0}
-                onClick={() => handleBulkDelete(deletable, clearSelection)}
+                onClick={() => handleBulkDelete(selected, clearSelection)}
               >
                 <Trash2 className="size-4" />
-                Delete ({deletable.length})
+                Delete ({selected.length})
               </Button>
-            )
-          }}
+            </>
+          )}
           emptyMessage="No transactions yet. Click 'Add Transaction' or connect a bank account to get started."
         />
       )}
@@ -428,63 +641,6 @@ export function TransactionsTable() {
         transaction={editingTransaction}
         onSuccess={handleFormSuccess}
       />
-
-      {/* Quick Category Assign Dialog */}
-      <Dialog
-        open={!!categoryAssignTarget}
-        onOpenChange={(open) => {
-          if (!open) setCategoryAssignTarget(null)
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Assign Category</DialogTitle>
-            <DialogDescription>
-              Select a category for &quot;{categoryAssignTarget?.description}
-              &quot;
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Select
-              value={assignCategoryId}
-              onValueChange={setAssignCategoryId}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No Category</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="inline-block size-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: c.color }}
-                      />
-                      {c.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setCategoryAssignTarget(null)}
-              disabled={isAssigning}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCategoryAssignConfirm}
-              disabled={isAssigning}
-            >
-              {isAssigning ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog
