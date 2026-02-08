@@ -10,5 +10,8 @@ Service management CRM built with Next.js 16, React 19, Tailwind v4, shadcn/ui, 
 - All monetary values use Prisma `Decimal` type
 - IDs: `cuid` for User/PlaidItem, `Int @default(autoincrement())` for everything else
 
+## Project Scope Reference
+For full context about modules, data model, integrations, and API routes, read `PROJECT_SCOPE.md` in the project root.
+
 ## Communication
 Ask clarifying questions before starting work when the request is ambiguous, has multiple valid approaches, or lacks context about desired behavior/appearance. Don't assume — confirm.
