@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { LucideIcon } from "@/components/ui/lucide-icon"
 
 interface Customer {
   id: number
@@ -30,7 +31,7 @@ interface Customer {
 interface ServiceType {
   id: number
   name: string
-  color: string | null
+  icon: string | null
 }
 
 interface TimeEntryInput {
@@ -59,7 +60,7 @@ interface ServiceData {
   amountPaid: number | string | null
   paymentDate: string | null
   customer?: { id: number; name: string }
-  serviceType?: { id: number; name: string; color: string | null } | null
+  serviceType?: { id: number; name: string; icon: string | null } | null
   timeEntries?: TimeEntryData[]
 }
 
@@ -339,10 +340,10 @@ export function ServiceFormDialog({
                       {serviceTypes.map((st) => (
                         <SelectItem key={st.id} value={String(st.id)}>
                           <span className="flex items-center gap-2">
-                            {st.color && (
-                              <span
-                                className="inline-block size-2.5 rounded-full"
-                                style={{ backgroundColor: st.color }}
+                            {st.icon && (
+                              <LucideIcon
+                                name={st.icon}
+                                className="size-3.5 text-muted-foreground"
                               />
                             )}
                             {st.name}

@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, description, color, icon, position } = body
+    const { name, description, icon, position } = body
 
     if (!name || !name.trim()) {
       return NextResponse.json(
@@ -72,7 +72,6 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         slug,
         description: description?.trim() || null,
-        color: color || null,
         icon: icon || null,
         position: finalPosition,
         userId: session.user.id,

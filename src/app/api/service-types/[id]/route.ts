@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const { name, slug, description, color, icon, position } = body
+    const { name, slug, description, icon, position } = body
 
     // If name changes and no slug provided, regenerate slug
     const shouldRegenerateSlug = name !== undefined && name.trim() !== existing.name && slug === undefined
@@ -48,7 +48,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(name !== undefined && { name: name.trim() }),
         ...(finalSlug !== undefined && { slug: finalSlug }),
         ...(description !== undefined && { description: description?.trim() || null }),
-        ...(color !== undefined && { color: color || null }),
         ...(icon !== undefined && { icon: icon || null }),
         ...(position !== undefined && { position }),
       },

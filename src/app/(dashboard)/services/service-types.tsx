@@ -19,13 +19,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ServiceTypeDialog } from "@/components/services/service-type-dialog"
+import { LucideIcon } from "@/components/ui/lucide-icon"
 
 interface ServiceType {
   id: number
   name: string
   slug: string
   description: string | null
-  color: string | null
   icon: string | null
   position: number
   _count: {
@@ -198,10 +198,14 @@ export function ServiceTypes() {
               className="flex items-center justify-between rounded-md border px-4 py-3"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <span
-                  className="inline-block size-4 shrink-0 rounded-full"
-                  style={{ backgroundColor: st.color || "#6b7280" }}
-                />
+                {st.icon ? (
+                  <LucideIcon
+                    name={st.icon}
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
+                ) : (
+                  <span className="inline-block size-4 shrink-0 rounded-full bg-muted-foreground/40" />
+                )}
                 <div className="min-w-0">
                   <div className="font-medium">{st.name}</div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">

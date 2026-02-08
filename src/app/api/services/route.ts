@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
           select: { id: true, name: true },
         },
         serviceType: {
-          select: { id: true, name: true, color: true },
+          select: { id: true, name: true, icon: true },
         },
         timeEntries: true,
         _count: {
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
         where: { id: created.id },
         include: {
           customer: { select: { id: true, name: true } },
-          serviceType: { select: { id: true, name: true, color: true } },
+          serviceType: { select: { id: true, name: true, icon: true } },
           timeEntries: true,
         },
       })

@@ -142,7 +142,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         },
         include: {
           customer: { select: { id: true, name: true } },
-          serviceType: { select: { id: true, name: true, color: true } },
+          serviceType: { select: { id: true, name: true, icon: true } },
           timeEntries: {
             orderBy: { date: "asc" },
           },

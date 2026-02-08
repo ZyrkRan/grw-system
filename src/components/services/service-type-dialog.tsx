@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { IconPicker } from "@/components/ui/icon-picker"
 import {
   Dialog,
   DialogContent,
@@ -18,7 +19,6 @@ interface ServiceTypeData {
   id?: number
   name: string
   description: string | null
-  color: string | null
   icon: string | null
 }
 
@@ -41,25 +41,18 @@ export function ServiceTypeDialog({
   const [description, setDescription] = useState(
     serviceType?.description ?? ""
   )
-  const [color, setColor] = useState(serviceType?.color ?? "#3b82f6")
   const [icon, setIcon] = useState(serviceType?.icon ?? "")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
 
-  function resetForm() {
-    setName(serviceType?.name ?? "")
-    setDescription(serviceType?.description ?? "")
-    setColor(serviceType?.color ?? "#3b82f6")
-    setIcon(serviceType?.icon ?? "")
-    setError("")
-  }
-
-  function handleOpenChange(value: boolean) {
-    if (value) {
-      resetForm()
+  useEffect(() => {
+    if (open) {
+      setName(serviceType?.name ?? "")
+      setDescription(serviceType?.description ?? "")
+      setIcon(serviceType?.icon ?? "")
+      setError("")
     }
-    onOpenChange(value)
-  }
+  }, [open, serviceType])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -83,7 +76,6 @@ export function ServiceTypeDialog({
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || null,
-          color: color.trim() || null,
           icon: icon.trim() || null,
         }),
       })
@@ -105,7 +97,7 @@ export function ServiceTypeDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -147,29 +139,8 @@ export function ServiceTypeDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="st-color">Color</Label>
-            <div className="flex items-center gap-2">
-              <div
-                className="size-8 shrink-0 rounded-md border"
-                style={{ backgroundColor: color || "#3b82f6" }}
-              />
-              <Input
-                id="st-color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                placeholder="#3b82f6"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="st-icon">Icon (Lucide icon name)</Label>
-            <Input
-              id="st-icon"
-              value={icon}
-              onChange={(e) => setIcon(e.target.value)}
-              placeholder="e.g. scissors, wrench, leaf"
-            />
+            <Label>Icon</Label>
+            <IconPicker value={icon} onChange={setIcon} />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { LucideIcon } from "@/components/ui/lucide-icon"
 
 interface TimeEntry {
   id?: number
@@ -28,7 +29,7 @@ interface ServiceDetailData {
   amountPaid: number | string | null
   paymentDate: string | null
   customer: { id: number; name: string }
-  serviceType: { id: number; name: string; color: string | null } | null
+  serviceType: { id: number; name: string; icon: string | null } | null
   timeEntries: TimeEntry[]
 }
 
@@ -74,10 +75,10 @@ export function ServiceDetailDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {service.serviceType?.color && (
-              <span
-                className="inline-block size-3 shrink-0 rounded-full"
-                style={{ backgroundColor: service.serviceType.color }}
+            {service.serviceType?.icon && (
+              <LucideIcon
+                name={service.serviceType.icon}
+                className="size-4 shrink-0 text-muted-foreground"
               />
             )}
             {service.serviceName}
