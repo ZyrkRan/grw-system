@@ -517,12 +517,12 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                     Inactive
                                   </Badge>
                                 )}
+                                {account.currentBalance !== null && account.currentBalance !== undefined && (
+                                  <span className="text-sm font-medium text-foreground">
+                                    • {formatCurrency(Number(account.currentBalance))}
+                                  </span>
+                                )}
                               </div>
-                              {account.currentBalance !== null && account.currentBalance !== undefined && (
-                                <div className="text-sm font-medium mt-1.5">
-                                  {formatCurrency(Number(account.currentBalance))}
-                                </div>
-                              )}
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
                                 <span>Synced {formatDate(account.lastSyncedAt)}</span>
                                 {syncResult && cooldown && (
@@ -530,59 +530,61 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 )}
                               </div>
 
-                              {/* Action Buttons */}
-                              {needsReconnect ? (
+                              {/* Reconnect Button (if needed) */}
+                              {needsReconnect && (
                                 <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                                   <PlaidReconnectButton
                                     plaidItemId={account.plaidItem!.id}
                                     onSuccess={fetchAccounts}
                                   />
                                 </div>
-                              ) : isPlaid ? (
-                                <div className="mt-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(e) => handleSync(account, e)}
-                                    disabled={isSyncing || !!cooldown}
-                                    className="h-6 px-2 text-xs"
-                                  >
-                                    {isSyncing ? (
-                                      <>
-                                        <RefreshCw className="mr-1 size-3 animate-spin" />
-                                        Syncing...
-                                      </>
-                                    ) : cooldown ? (
-                                      <>
-                                        <Check className="mr-1 size-3 text-green-500" />
-                                        {cooldown}s
-                                      </>
-                                    ) : (
-                                      <>
-                                        <RefreshCw className="mr-1 size-3" />
-                                        Sync
-                                      </>
-                                    )}
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="mt-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(e) => handleImportCSV(account, e)}
-                                    className="h-6 px-2 text-xs"
-                                  >
-                                    <Upload className="mr-1 size-3" />
-                                    Import CSV
-                                  </Button>
-                                </div>
                               )}
                             </div>
                           </div>
 
-                          {/* Actions Menu */}
-                          <DropdownMenu>
+                          {/* Action Buttons (right side) */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Sync/Import Button */}
+                            {!needsReconnect && isPlaid && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => handleSync(account, e)}
+                                disabled={isSyncing || !!cooldown}
+                                className="h-7 px-2 text-xs"
+                              >
+                                {isSyncing ? (
+                                  <>
+                                    <RefreshCw className="mr-1 size-3 animate-spin" />
+                                    Syncing...
+                                  </>
+                                ) : cooldown ? (
+                                  <>
+                                    <Check className="mr-1 size-3 text-green-500" />
+                                    {cooldown}s
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="mr-1 size-3" />
+                                    Sync
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            {!needsReconnect && !isPlaid && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => handleImportCSV(account, e)}
+                                className="h-7 px-2 text-xs"
+                              >
+                                <Upload className="mr-1 size-3" />
+                                Import CSV
+                              </Button>
+                            )}
+
+                            {/* Actions Menu */}
+                            <DropdownMenu>
                             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                               <Button
                                 variant="ghost"
@@ -607,7 +609,8 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
-                          </DropdownMenu>
+                            </DropdownMenu>
+                          </div>
                         </div>
                       </div>
                     )
