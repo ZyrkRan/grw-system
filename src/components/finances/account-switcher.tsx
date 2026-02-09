@@ -389,9 +389,9 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
             <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[340px] p-0" align="start">
-          <div className="flex items-center justify-between p-2 border-b">
-            <span className="text-sm font-medium px-2">Accounts</span>
+        <PopoverContent className="w-[360px] p-0" align="start" sideOffset={8}>
+          <div className="flex items-center justify-between px-3 py-2 border-b">
+            <span className="text-sm font-medium">Accounts</span>
             <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" className="h-7">
@@ -418,8 +418,8 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
             </DropdownMenu>
           </div>
 
-          <ScrollArea className="max-h-[400px]">
-            <div className="p-1">
+          <ScrollArea className="max-h-[500px]">
+            <div className="p-2 space-y-1">
               {/* All Accounts Option */}
               <div
                 role="button"
@@ -494,31 +494,31 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                           }
                         }}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2 min-w-0">
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1 overflow-hidden">
                             <div className="flex size-8 items-center justify-center rounded-md bg-muted shrink-0 mt-0.5">
                               <AccountIcon type={account.type} />
                             </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-sm truncate max-w-[180px]">
+                            <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+                              <div className="flex items-center gap-2 mb-1 min-w-0">
+                                <span className="font-medium text-sm truncate">
                                   {account.name}
                                 </span>
                                 {isSelected && (
                                   <Check className="size-4 shrink-0 text-primary" />
                                 )}
                               </div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <Badge variant={getAccountTypeVariant(account.type)} className="text-xs">
+                              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                <Badge variant={getAccountTypeVariant(account.type)} className="text-xs shrink-0">
                                   {getAccountTypeLabel(account.type)}
                                 </Badge>
                                 {!account.isActive && (
-                                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                                  <Badge variant="outline" className="text-xs text-muted-foreground shrink-0">
                                     Inactive
                                   </Badge>
                                 )}
                                 {account.currentBalance !== null && account.currentBalance !== undefined && (
-                                  <span className="text-sm font-medium text-foreground">
+                                  <span className="text-sm font-medium text-foreground shrink-0">
                                     • {formatCurrency(Number(account.currentBalance))}
                                   </span>
                                 )}
@@ -543,7 +543,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                           </div>
 
                           {/* Action Buttons (right side) */}
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex items-start gap-1 shrink-0 pt-0.5">
                             {/* Sync/Import Button */}
                             {!needsReconnect && isPlaid && (
                               <Button
@@ -551,7 +551,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 size="sm"
                                 onClick={(e) => handleSync(account, e)}
                                 disabled={isSyncing || !!cooldown}
-                                className="h-7 px-2 text-xs"
+                                className="h-7 px-2 text-xs whitespace-nowrap"
                               >
                                 {isSyncing ? (
                                   <>
@@ -576,10 +576,10 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 variant="outline"
                                 size="sm"
                                 onClick={(e) => handleImportCSV(account, e)}
-                                className="h-7 px-2 text-xs"
+                                className="h-7 px-2 text-xs whitespace-nowrap"
                               >
                                 <Upload className="mr-1 size-3" />
-                                Import CSV
+                                Import
                               </Button>
                             )}
 
