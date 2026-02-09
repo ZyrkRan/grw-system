@@ -15,13 +15,14 @@ type Tab = "transactions" | "categories"
 type AnalyticsTab = "inflow-outflow" | "categories" | "balance"
 
 const TIMEFRAME_STORAGE_KEY = "finances-timeframe"
+const ACCOUNT_STORAGE_KEY = "finances-selected-account"
 
 export default function FinancesPage() {
   const [activeTab, setActiveTab] = useState<Tab>("transactions")
   const [selectedAccountId, setSelectedAccountId] = useState("all")
   const [timeframe, setTimeframe] = useState<TimeframeValue>(() => getTimeframeValue("month"))
 
-  // Hydrate from localStorage after mount to avoid SSR mismatch
+  // Hydrate timeframe from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
     const stored = localStorage.getItem(TIMEFRAME_STORAGE_KEY)
     if (stored) {
@@ -33,9 +34,22 @@ export default function FinancesPage() {
     }
   }, [])
 
+  // Hydrate selected account from localStorage after mount
+  useEffect(() => {
+    const stored = localStorage.getItem(ACCOUNT_STORAGE_KEY)
+    if (stored) {
+      setSelectedAccountId(stored)
+    }
+  }, [])
+
   const handleTimeframeChange = (newTimeframe: TimeframeValue) => {
     setTimeframe(newTimeframe)
     localStorage.setItem(TIMEFRAME_STORAGE_KEY, JSON.stringify(newTimeframe))
+  }
+
+  const handleAccountChange = (accountId: string) => {
+    setSelectedAccountId(accountId)
+    localStorage.setItem(ACCOUNT_STORAGE_KEY, accountId)
   }
 
   return (
@@ -46,7 +60,7 @@ export default function FinancesPage() {
           {activeTab === "transactions" && (
             <AccountSwitcher
               selectedAccountId={selectedAccountId}
-              onAccountChange={setSelectedAccountId}
+              onAccountChange={handleAccountChange}
             />
           )}
         </div>
