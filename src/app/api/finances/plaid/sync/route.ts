@@ -206,8 +206,18 @@ export async function POST(request: NextRequest) {
     const plaidErrorCode = (plaidError as { error_code?: string })?.error_code
     const plaidMsg = (plaidError as { error_message?: string })?.error_message
 
-    // Detect expired credentials — mark item for reconnection
-    if (plaidErrorCode === "ITEM_LOGIN_REQUIRED" && plaidItemId) {
+    // Error codes that require reconnection
+    const reconnectRequired = [
+      "ITEM_LOGIN_REQUIRED",
+      "INVALID_CREDENTIALS",
+      "INVALID_UPDATED_USERNAME",
+      "INVALID_MFA",
+      "INTERNAL_SERVER_ERROR",
+      "ITEM_NOT_SUPPORTED",
+    ]
+
+    // Detect errors that require reconnection — mark item for reconnection
+    if (plaidItemId && plaidErrorCode && reconnectRequired.includes(plaidErrorCode)) {
       await prisma.plaidItem.update({
         where: { id: plaidItemId },
         data: {
@@ -219,6 +229,17 @@ export async function POST(request: NextRequest) {
         { success: false, error: "LOGIN_REQUIRED", loginRequired: true },
         { status: 400 }
       )
+    }
+
+    // For other errors, set status to ERROR and update lastError
+    if (plaidItemId && plaidErrorCode) {
+      await prisma.plaidItem.update({
+        where: { id: plaidItemId },
+        data: {
+          status: "ERROR",
+          lastError: plaidMsg || "An error occurred during sync.",
+        },
+      })
     }
 
     const message = plaidMsg || (error instanceof Error ? error.message : "Failed to sync transactions")

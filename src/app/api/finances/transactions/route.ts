@@ -24,20 +24,29 @@ export async function GET(request: NextRequest) {
   const uncategorized = searchParams.get("uncategorized")
 
   try {
+    // Parse dates with proper time boundaries to avoid timezone issues
+    let dateFilter = {}
+    if (dateFrom || dateTo) {
+      const startDate = dateFrom ? new Date(dateFrom) : null
+      const endDate = dateTo ? new Date(dateTo) : null
+
+      if (startDate) startDate.setHours(0, 0, 0, 0)
+      if (endDate) endDate.setHours(23, 59, 59, 999)
+
+      dateFilter = {
+        date: {
+          ...(startDate && { gte: startDate }),
+          ...(endDate && { lte: endDate }),
+        },
+      }
+    }
+
     const where: Prisma.BankTransactionWhereInput = {
       userId,
       ...(accountId && { accountId: parseInt(accountId, 10) }),
       ...(categoryId && { categoryId: parseInt(categoryId, 10) }),
       ...(type && { type: type as "INFLOW" | "OUTFLOW" }),
-      ...(dateFrom && {
-        date: { gte: new Date(dateFrom) },
-      }),
-      ...(dateTo && {
-        date: {
-          ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-          lte: new Date(dateTo),
-        },
-      }),
+      ...dateFilter,
       ...(search && {
         OR: [
           { description: { contains: search, mode: "insensitive" as const } },
