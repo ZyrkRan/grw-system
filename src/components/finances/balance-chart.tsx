@@ -19,6 +19,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import type { TimeframeValue } from "@/components/finances/timeframe-selector"
 
 interface BalancePoint {
   date: string
@@ -53,7 +54,7 @@ function formatCurrency(value: number) {
 const balanceChartConfig = {
   balance: {
     label: "Balance",
-    color: "hsl(var(--primary))",
+    color: "#3b82f6", // Blue
   },
 } satisfies ChartConfig
 
@@ -79,17 +80,44 @@ function BalanceSkeleton() {
   )
 }
 
-export function BalanceChart({ accountId }: { accountId?: string }) {
-  const [granularity, setGranularity] = useState<Granularity>("daily")
+export function BalanceChart({
+  accountId,
+  timeframe,
+  compact = false,
+}: {
+  accountId?: string
+  timeframe: TimeframeValue
+  compact?: boolean
+}) {
   const [data, setData] = useState<BalanceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+
+  // Auto-calculate granularity based on timeframe duration
+  const granularity: Granularity = (() => {
+    const fromDate = new Date(timeframe.dateFrom)
+    const toDate = new Date(timeframe.dateTo)
+    const durationMs = toDate.getTime() - fromDate.getTime()
+    const durationDays = durationMs / (1000 * 60 * 60 * 24)
+
+    if (durationDays <= 7) {
+      return "daily"
+    } else if (durationDays <= 90) {
+      return "weekly"
+    } else {
+      return "monthly"
+    }
+  })()
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError(false)
     try {
-      const params = new URLSearchParams({ granularity })
+      const params = new URLSearchParams({
+        granularity,
+        dateFrom: timeframe.dateFrom,
+        dateTo: timeframe.dateTo,
+      })
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
@@ -109,7 +137,7 @@ export function BalanceChart({ accountId }: { accountId?: string }) {
     } finally {
       setLoading(false)
     }
-  }, [granularity, accountId])
+  }, [granularity, timeframe, accountId])
 
   useEffect(() => {
     fetchData()
@@ -131,29 +159,80 @@ export function BalanceChart({ accountId }: { accountId?: string }) {
         ? "text-red-600"
         : ""
 
+  if (compact) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          {loading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-[200px] w-full" />
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="text-sm font-medium">Failed to load</p>
+              <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
+                Retry
+              </Button>
+            </div>
+          ) : !data || data.points.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Minus className="size-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No data</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Balance History</h3>
+                <span className="text-xs font-medium">
+                  {formatCurrency(data.summary.endBalance)}
+                </span>
+              </div>
+              <ChartContainer config={balanceChartConfig} className="h-[200px] w-full">
+                <LineChart accessibilityLayer data={data.points}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    tickFormatter={(v: number) => formatCurrency(v)}
+                    axisLine={false}
+                    tickLine={false}
+                    width={60}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) => (
+                          <span className="font-medium">{formatCurrency(Number(value))}</span>
+                        )}
+                      />
+                    }
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="balance"
+                    stroke="var(--color-balance)"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 3, strokeWidth: 1 }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Full-size mode
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <div className="flex rounded-md border border-input">
-          {(["daily", "weekly", "monthly"] as const).map((g, idx, arr) => (
-            <Button
-              key={g}
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-8 rounded-none px-3 text-xs",
-                idx === 0 && "rounded-l-md",
-                idx === arr.length - 1 && "rounded-r-md",
-                granularity === g && "bg-muted font-medium hover:bg-muted"
-              )}
-              onClick={() => setGranularity(g)}
-            >
-              {g.charAt(0).toUpperCase() + g.slice(1)}
-            </Button>
-          ))}
-        </div>
-      </div>
-
       {loading ? (
         <BalanceSkeleton />
       ) : error ? (

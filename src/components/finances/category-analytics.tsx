@@ -31,16 +31,21 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import type { TimeframeValue } from "@/components/finances/timeframe-selector"
 
 interface PieDataItem {
+  id: number | null
   name: string
   color: string
   value: number
   count: number
+  parentId: number | null
+  isGroup: boolean
 }
 
 interface AnalyticsData {
-  pieData: PieDataItem[]
+  inflowPieData: PieDataItem[]
+  outflowPieData: PieDataItem[]
   trendData: Record<string, string | number>[]
   trendCategories: string[]
   trendColors: Record<string, string>
@@ -50,6 +55,7 @@ interface AnalyticsData {
     averageTransaction: number
     uncategorizedCount: number
     topCategory: string | null
+    topInflowCategory: string | null
   }
 }
 
@@ -148,7 +154,17 @@ function MonthRangePicker({
   )
 }
 
-function SpendingPieChart({ data }: { data: PieDataItem[] }) {
+function SpendingPieChart({
+  data,
+  compact = false,
+  title = "Spending by Category",
+  onCategoryClick,
+}: {
+  data: PieDataItem[]
+  compact?: boolean
+  title?: string
+  onCategoryClick?: (categoryId: number | null) => void
+}) {
   const pieConfig = useMemo(() => {
     const config: ChartConfig = {}
     for (const item of data) {
@@ -167,10 +183,60 @@ function SpendingPieChart({ data }: { data: PieDataItem[] }) {
     [data]
   )
 
+  const handlePieClick = (data: any) => {
+    if (onCategoryClick && data.isGroup) {
+      onCategoryClick(data.id)
+    }
+  }
+
+  if (compact) {
+    return (
+      <ChartContainer config={pieConfig} className="h-full w-full">
+        <PieChart accessibilityLayer>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            innerRadius={45}
+            outerRadius={75}
+            paddingAngle={2}
+            dataKey="value"
+            nameKey="name"
+            label={false}
+            onClick={handlePieClick}
+            style={onCategoryClick ? { cursor: 'pointer' } : undefined}
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={index} fill={entry.color} stroke="none" />
+            ))}
+          </Pie>
+          <ChartTooltip
+            content={({ active, payload }) => {
+              if (!active || !payload || !payload.length) return null
+              const data = payload[0].payload
+              return (
+                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium">{data.name}</span>
+                    <span className="text-sm font-bold">{formatCurrency(data.value)}</span>
+                    <span className="text-xs text-muted-foreground">{data.count} transactions</span>
+                    {data.isGroup && onCategoryClick && (
+                      <span className="text-xs text-primary">Click to expand</span>
+                    )}
+                  </div>
+                </div>
+              )
+            }}
+          />
+        </PieChart>
+      </ChartContainer>
+    )
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-semibold">Spending by Category</CardTitle>
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
       </CardHeader>
       <CardContent>
         <ChartContainer config={pieConfig} className="mx-auto min-h-[280px] w-full">
@@ -183,23 +249,51 @@ function SpendingPieChart({ data }: { data: PieDataItem[] }) {
               outerRadius={100}
               paddingAngle={2}
               dataKey="value"
-              nameKey="key"
+              nameKey="name"
+              label={false}
+              onClick={handlePieClick}
+              style={onCategoryClick ? { cursor: 'pointer' } : undefined}
             >
               {chartData.map((entry, index) => (
-                <Cell key={index} fill={entry.fill} stroke="none" />
+                <Cell key={index} fill={entry.color} stroke="none" />
               ))}
             </Pie>
             <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  nameKey="key"
-                  formatter={(value) => (
-                    <span className="font-medium">{formatCurrency(Number(value))}</span>
-                  )}
-                />
-              }
+              content={({ active, payload }) => {
+                if (!active || !payload || !payload.length) return null
+                const data = payload[0].payload
+                return (
+                  <div className="rounded-lg border bg-background p-2 shadow-sm">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium">{data.name}</span>
+                      <span className="text-sm font-bold">{formatCurrency(data.value)}</span>
+                      <span className="text-xs text-muted-foreground">{data.count} transactions</span>
+                      {data.isGroup && onCategoryClick && (
+                        <span className="text-xs text-primary">Click to expand</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              }}
             />
-            <ChartLegend content={<ChartLegendContent nameKey="key" />} />
+            <ChartLegend
+              content={({ payload }) => {
+                if (!payload || !payload.length) return null
+                return (
+                  <div className="flex flex-wrap gap-2 justify-center mt-4">
+                    {payload.map((entry, index) => (
+                      <div key={index} className="flex items-center gap-1.5 text-xs">
+                        <div
+                          className="h-3 w-3 rounded-sm"
+                          style={{ backgroundColor: entry.color }}
+                        />
+                        <span>{entry.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              }}
+            />
           </PieChart>
         </ChartContainer>
       </CardContent>
@@ -342,23 +436,28 @@ function EmptyState() {
 
 // --- Main component ---
 
-export function CategoryAnalytics({ accountId }: { accountId?: string }) {
-  const now = new Date()
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
-  const [trendRange, setTrendRange] = useState(6)
+export function CategoryAnalytics({
+  accountId,
+  timeframe,
+  compact = false,
+}: {
+  accountId?: string
+  timeframe: TimeframeValue
+  compact?: boolean
+}) {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [expandedInflowCategory, setExpandedInflowCategory] = useState<number | null>(null)
+  const [expandedOutflowCategory, setExpandedOutflowCategory] = useState<number | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError(false)
     try {
       const params = new URLSearchParams({
-        month: String(month),
-        year: String(year),
-        months: String(trendRange),
+        dateFrom: timeframe.dateFrom,
+        dateTo: timeframe.dateTo,
       })
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
@@ -379,25 +478,157 @@ export function CategoryAnalytics({ accountId }: { accountId?: string }) {
     } finally {
       setLoading(false)
     }
-  }, [month, year, trendRange, accountId])
+  }, [timeframe, accountId])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
+  // Filter inflow data based on expanded state
+  const filteredInflowData = useMemo(() => {
+    if (!data) return []
+    if (expandedInflowCategory === null) {
+      // Show only top-level categories (no parent)
+      return data.inflowPieData.filter((item) => item.parentId === null)
+    } else {
+      // Show only children of the expanded category
+      return data.inflowPieData.filter((item) => item.parentId === expandedInflowCategory)
+    }
+  }, [data, expandedInflowCategory])
+
+  // Filter outflow data based on expanded state
+  const filteredOutflowData = useMemo(() => {
+    if (!data) return []
+    if (expandedOutflowCategory === null) {
+      // Show only top-level categories (no parent)
+      return data.outflowPieData.filter((item) => item.parentId === null)
+    } else {
+      // Show only children of the expanded category
+      return data.outflowPieData.filter((item) => item.parentId === expandedOutflowCategory)
+    }
+  }, [data, expandedOutflowCategory])
+
+  // Get expanded category name for breadcrumb
+  const expandedInflowName = useMemo(() => {
+    if (!data || expandedInflowCategory === null) return null
+    const cat = data.inflowPieData.find((item) => item.id === expandedInflowCategory)
+    return cat?.name || null
+  }, [data, expandedInflowCategory])
+
+  const expandedOutflowName = useMemo(() => {
+    if (!data || expandedOutflowCategory === null) return null
+    const cat = data.outflowPieData.find((item) => item.id === expandedOutflowCategory)
+    return cat?.name || null
+  }, [data, expandedOutflowCategory])
+
+  const handleInflowCategoryClick = useCallback((categoryId: number | null) => {
+    setExpandedInflowCategory(categoryId)
+  }, [])
+
+  const handleOutflowCategoryClick = useCallback((categoryId: number | null) => {
+    setExpandedOutflowCategory(categoryId)
+  }, [])
+
+  if (compact) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          {loading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-[200px] w-full" />
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="text-sm font-medium">Failed to load</p>
+              <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
+                Retry
+              </Button>
+            </div>
+          ) : !data || data.summary.totalCount === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <TrendingDown className="size-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No data</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Category Spending</h3>
+              <div className="grid grid-cols-2 gap-3 h-[200px]">
+                {/* Inflow Pie */}
+                <div className="flex flex-col">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-muted-foreground">Inflow</p>
+                    {expandedInflowName && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-2 text-xs"
+                        onClick={() => setExpandedInflowCategory(null)}
+                      >
+                        ← Back
+                      </Button>
+                    )}
+                  </div>
+                  {expandedInflowName && (
+                    <p className="text-xs font-medium mb-1">{expandedInflowName}</p>
+                  )}
+                  <div className="flex-1">
+                    {filteredInflowData.length > 0 ? (
+                      <SpendingPieChart
+                        data={filteredInflowData}
+                        compact
+                        onCategoryClick={handleInflowCategoryClick}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+                        {expandedInflowName ? "No subcategories" : "No inflows"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Outflow Pie */}
+                <div className="flex flex-col">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-muted-foreground">Outflow</p>
+                    {expandedOutflowName && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-2 text-xs"
+                        onClick={() => setExpandedOutflowCategory(null)}
+                      >
+                        ← Back
+                      </Button>
+                    )}
+                  </div>
+                  {expandedOutflowName && (
+                    <p className="text-xs font-medium mb-1">{expandedOutflowName}</p>
+                  )}
+                  <div className="flex-1">
+                    {filteredOutflowData.length > 0 ? (
+                      <SpendingPieChart
+                        data={filteredOutflowData}
+                        compact
+                        onCategoryClick={handleOutflowCategoryClick}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+                        {expandedOutflowName ? "No subcategories" : "No outflows"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Full-size mode
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <MonthRangePicker
-          month={month}
-          year={year}
-          trendRange={trendRange}
-          onMonthChange={setMonth}
-          onYearChange={setYear}
-          onTrendRangeChange={setTrendRange}
-        />
-      </div>
-
       {loading ? (
         <AnalyticsSkeleton />
       ) : error ? (
@@ -415,12 +646,20 @@ export function CategoryAnalytics({ accountId }: { accountId?: string }) {
       ) : (
         <div className="space-y-4">
           {/* Summary cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Top Category</p>
+                <p className="text-sm text-muted-foreground">Top Outflow</p>
                 <p className="text-lg font-semibold mt-1">
                   {data.summary.topCategory || "N/A"}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Top Inflow</p>
+                <p className="text-lg font-semibold mt-1">
+                  {data.summary.topInflowCategory || "N/A"}
                 </p>
               </CardContent>
             </Card>
@@ -446,8 +685,45 @@ export function CategoryAnalytics({ accountId }: { accountId?: string }) {
           </div>
 
           {/* Charts */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SpendingPieChart data={data.pieData} />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              {expandedInflowName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{expandedInflowName}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setExpandedInflowCategory(null)}
+                  >
+                    ← Back
+                  </Button>
+                </div>
+              )}
+              <SpendingPieChart
+                data={filteredInflowData}
+                title={expandedInflowName ? "Subcategories" : "Inflow by Category"}
+                onCategoryClick={handleInflowCategoryClick}
+              />
+            </div>
+            <div className="space-y-2">
+              {expandedOutflowName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{expandedOutflowName}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setExpandedOutflowCategory(null)}
+                  >
+                    ← Back
+                  </Button>
+                </div>
+              )}
+              <SpendingPieChart
+                data={filteredOutflowData}
+                title={expandedOutflowName ? "Subcategories" : "Outflow by Category"}
+                onCategoryClick={handleOutflowCategoryClick}
+              />
+            </div>
             <CategoryTrendChart
               data={data.trendData}
               categories={data.trendCategories}

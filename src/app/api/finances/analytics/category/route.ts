@@ -11,40 +11,99 @@ export async function GET(request: NextRequest) {
   const userId = session.user.id
   const searchParams = request.nextUrl.searchParams
 
-  const now = new Date()
-  const month = Math.min(12, Math.max(1, parseInt(searchParams.get("month") || String(now.getMonth() + 1), 10) || 1))
-  const year = Math.min(now.getFullYear() + 1, Math.max(2000, parseInt(searchParams.get("year") || String(now.getFullYear()), 10) || now.getFullYear()))
-  const monthsRaw = parseInt(searchParams.get("months") || "6", 10)
-  const months = [3, 6, 12].includes(monthsRaw) ? monthsRaw : 6
+  // Parse account ID
   const accountIdParam = searchParams.get("accountId")
   const accountId = accountIdParam && accountIdParam !== "all" ? parseInt(accountIdParam, 10) : null
   if (accountId !== null && isNaN(accountId)) {
     return NextResponse.json({ success: false, error: "Invalid account ID" }, { status: 400 })
   }
 
-  // Calculate the trend range start date
-  const trendStart = new Date(year, month - 1 - (months - 1), 1)
-  const selectedMonthStart = new Date(year, month - 1, 1)
-  const selectedMonthEnd = new Date(year, month, 1)
+  // Check if using dateFrom/dateTo or month/year params
+  const dateFromParam = searchParams.get("dateFrom")
+  const dateToParam = searchParams.get("dateTo")
+
+  let selectedMonthStart: Date
+  let selectedMonthEnd: Date
+  let trendStart: Date
+  let months: number
+
+  if (dateFromParam && dateToParam) {
+    // Use dateFrom/dateTo parameters
+    selectedMonthStart = new Date(dateFromParam)
+    selectedMonthEnd = new Date(dateToParam)
+    selectedMonthStart.setHours(0, 0, 0, 0)
+    selectedMonthEnd.setHours(23, 59, 59, 999)
+
+    // For trend data, use the same range
+    trendStart = new Date(selectedMonthStart)
+
+    // Calculate approximate months for bucketing (used for trend chart initialization)
+    const durationMs = selectedMonthEnd.getTime() - selectedMonthStart.getTime()
+    const durationDays = durationMs / (1000 * 60 * 60 * 24)
+    months = Math.ceil(durationDays / 30) // Approximate months
+    if (months < 1) months = 1
+  } else {
+    // Use existing month/year/months parameters (backward compatibility)
+    const now = new Date()
+    const month = Math.min(12, Math.max(1, parseInt(searchParams.get("month") || String(now.getMonth() + 1), 10) || 1))
+    const year = Math.min(now.getFullYear() + 1, Math.max(2000, parseInt(searchParams.get("year") || String(now.getFullYear()), 10) || now.getFullYear()))
+    const monthsRaw = parseInt(searchParams.get("months") || "6", 10)
+    months = [3, 6, 12].includes(monthsRaw) ? monthsRaw : 6
+
+    // Calculate the trend range start date
+    trendStart = new Date(year, month - 1 - (months - 1), 1)
+    selectedMonthStart = new Date(year, month - 1, 1)
+    selectedMonthEnd = new Date(year, month, 1)
+  }
 
   const baseWhere = {
     userId,
-    type: "OUTFLOW" as const,
     ...(accountId ? { accountId } : {}),
   }
 
   try {
-    const [pieRaw, trendRaw, summaryAgg, uncategorizedCount] = await Promise.all([
-      // 1. Pie chart: group by category for the selected month
+    const [inflowRaw, outflowRaw, trendRaw, summaryAgg, uncategorizedCount] = await Promise.all([
+      // 1. Inflow pie chart data
       prisma.bankTransaction.findMany({
         where: {
           ...baseWhere,
+          type: "INFLOW",
           date: { gte: selectedMonthStart, lt: selectedMonthEnd },
         },
         select: {
           amount: true,
           categoryId: true,
-          category: { select: { id: true, name: true, color: true } },
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              parentId: true,
+              parent: { select: { id: true, name: true, color: true } },
+            },
+          },
+        },
+      }),
+
+      // 2. Outflow pie chart data
+      prisma.bankTransaction.findMany({
+        where: {
+          ...baseWhere,
+          type: "OUTFLOW",
+          date: { gte: selectedMonthStart, lt: selectedMonthEnd },
+        },
+        select: {
+          amount: true,
+          categoryId: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              parentId: true,
+              parent: { select: { id: true, name: true, color: true } },
+            },
+          },
         },
       }),
 
@@ -83,22 +142,51 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    // --- Build pie data ---
-    const pieByCat = new Map<string, { name: string; color: string; value: number; count: number }>()
-    for (const tx of pieRaw) {
+    // --- Build pie data for inflows ---
+    const inflowByCat = new Map<
+      string,
+      { id: number | null; name: string; color: string; value: number; count: number; parentId: number | null; isGroup: boolean }
+    >()
+    for (const tx of inflowRaw) {
       const key = tx.categoryId ? String(tx.categoryId) : "uncategorized"
       const name = tx.category?.name || "Uncategorized"
-      const color = tx.category?.color || "#94a3b8"
-      const existing = pieByCat.get(key)
+      const color = tx.category?.color || "#10b981"
+      const id = tx.categoryId
+      const parentId = tx.category?.parentId || null
+      const existing = inflowByCat.get(key)
       const amt = Number(tx.amount)
       if (existing) {
         existing.value += amt
         existing.count += 1
       } else {
-        pieByCat.set(key, { name, color, value: amt, count: 1 })
+        inflowByCat.set(key, { id, name, color, value: amt, count: 1, parentId, isGroup: false })
       }
     }
-    const pieData = Array.from(pieByCat.values())
+    const inflowPieData = Array.from(inflowByCat.values())
+      .map((d) => ({ ...d, value: Math.round(d.value * 100) / 100 }))
+      .sort((a, b) => b.value - a.value)
+
+    // --- Build pie data for outflows ---
+    const outflowByCat = new Map<
+      string,
+      { id: number | null; name: string; color: string; value: number; count: number; parentId: number | null; isGroup: boolean }
+    >()
+    for (const tx of outflowRaw) {
+      const key = tx.categoryId ? String(tx.categoryId) : "uncategorized"
+      const name = tx.category?.name || "Uncategorized"
+      const color = tx.category?.color || "#ef4444"
+      const id = tx.categoryId
+      const parentId = tx.category?.parentId || null
+      const existing = outflowByCat.get(key)
+      const amt = Number(tx.amount)
+      if (existing) {
+        existing.value += amt
+        existing.count += 1
+      } else {
+        outflowByCat.set(key, { id, name, color, value: amt, count: 1, parentId, isGroup: false })
+      }
+    }
+    const outflowPieData = Array.from(outflowByCat.values())
       .map((d) => ({ ...d, value: Math.round(d.value * 100) / 100 }))
       .sort((a, b) => b.value - a.value)
 
@@ -131,10 +219,11 @@ export async function GET(request: NextRequest) {
     // Aggregate by month
     const trendByMonth = new Map<string, Record<string, number>>()
     // Initialize all months in range
-    for (let i = 0; i < months; i++) {
-      const d = new Date(year, month - 1 - (months - 1) + i, 1)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const current = new Date(trendStart)
+    while (current < selectedMonthEnd) {
+      const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`
       trendByMonth.set(key, {})
+      current.setMonth(current.getMonth() + 1)
     }
 
     for (const tx of trendRaw) {
@@ -164,19 +253,21 @@ export async function GET(request: NextRequest) {
     const totalSpend = summaryAgg._sum.amount ? Number(summaryAgg._sum.amount) : 0
     const totalCount = summaryAgg._count.id
     const averageTransaction = summaryAgg._avg.amount ? Number(summaryAgg._avg.amount) : 0
-    const topCategory = pieData.length > 0 ? pieData[0].name : null
+    const topOutflowCategory = outflowPieData.length > 0 ? outflowPieData[0].name : null
+    const topInflowCategory = inflowPieData.length > 0 ? inflowPieData[0].name : null
 
     const summary = {
       totalSpend: Math.round(totalSpend * 100) / 100,
       totalCount,
       averageTransaction: Math.round(averageTransaction * 100) / 100,
       uncategorizedCount,
-      topCategory,
+      topCategory: topOutflowCategory,
+      topInflowCategory,
     }
 
     return NextResponse.json({
       success: true,
-      data: { pieData, trendData, trendCategories, trendColors, summary },
+      data: { inflowPieData, outflowPieData, trendData, trendCategories, trendColors, summary },
     })
   } catch (error) {
     console.error("Failed to fetch category analytics:", error)

@@ -111,9 +111,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid account ID" }, { status: 400 })
   }
 
-  const startDate = getStartDate(granularity)
-  const endDate = new Date()
-  endDate.setHours(23, 59, 59, 999)
+  // Use dateFrom/dateTo if provided, otherwise use granularity-based calculation
+  const dateFromParam = searchParams.get("dateFrom")
+  const dateToParam = searchParams.get("dateTo")
+
+  let startDate: Date
+  let endDate: Date
+
+  if (dateFromParam && dateToParam) {
+    startDate = new Date(dateFromParam)
+    endDate = new Date(dateToParam)
+    startDate.setHours(0, 0, 0, 0)
+    endDate.setHours(23, 59, 59, 999)
+  } else {
+    startDate = getStartDate(granularity)
+    endDate = new Date()
+    endDate.setHours(23, 59, 59, 999)
+  }
 
   const baseWhere = {
     userId,
