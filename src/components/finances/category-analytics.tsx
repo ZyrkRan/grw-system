@@ -5,6 +5,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Label,
   BarChart,
   Bar,
   XAxis,
@@ -183,10 +184,42 @@ function SpendingPieChart({
     [data]
   )
 
+  const total = useMemo(() => {
+    return data.reduce((sum, item) => sum + item.value, 0)
+  }, [data])
+
   const handlePieClick = (data: any) => {
     if (onCategoryClick && data.isGroup) {
       onCategoryClick(data.id)
     }
+  }
+
+  // Custom label to render total in center
+  const renderCenterLabel = ({ viewBox }: any) => {
+    const { cx, cy } = viewBox
+    return (
+      <text
+        x={cx}
+        y={cy}
+        textAnchor="middle"
+        dominantBaseline="middle"
+      >
+        <tspan
+          x={cx}
+          y={cy - (compact ? 8 : 10)}
+          className="fill-foreground text-sm font-medium"
+        >
+          Total
+        </tspan>
+        <tspan
+          x={cx}
+          y={cy + (compact ? 8 : 10)}
+          className="fill-foreground text-base font-bold"
+        >
+          {formatCurrency(total)}
+        </tspan>
+      </text>
+    )
   }
 
   if (compact) {
@@ -202,13 +235,13 @@ function SpendingPieChart({
             paddingAngle={2}
             dataKey="value"
             nameKey="name"
-            label={false}
             onClick={handlePieClick}
             style={onCategoryClick ? { cursor: 'pointer' } : undefined}
           >
             {chartData.map((entry, index) => (
               <Cell key={index} fill={entry.color} stroke="none" />
             ))}
+            <Label content={renderCenterLabel} position="center" />
           </Pie>
           <ChartTooltip
             content={({ active, payload }) => {
@@ -250,13 +283,13 @@ function SpendingPieChart({
               paddingAngle={2}
               dataKey="value"
               nameKey="name"
-              label={false}
               onClick={handlePieClick}
               style={onCategoryClick ? { cursor: 'pointer' } : undefined}
             >
               {chartData.map((entry, index) => (
                 <Cell key={index} fill={entry.color} stroke="none" />
               ))}
+              <Label content={renderCenterLabel} position="center" />
             </Pie>
             <ChartTooltip
               content={({ active, payload }) => {

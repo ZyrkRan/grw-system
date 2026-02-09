@@ -10,13 +10,12 @@ import {
 } from "recharts"
 import { TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
   type ChartConfig,
@@ -61,6 +60,41 @@ const chartConfig = {
     color: "#ef4444", // Red
   },
 } satisfies ChartConfig
+
+function CustomTooltip({ active, payload }: any) {
+  if (!active || !payload || payload.length === 0) return null
+
+  const data = payload[0].payload
+  const inflow = data.inflow || 0
+  const outflow = data.outflow || 0
+  const net = inflow - outflow
+
+  return (
+    <div className="rounded-lg border bg-background p-3 shadow-md">
+      <p className="text-sm font-medium mb-2">{data.label}</p>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-muted-foreground">Inflow:</span>
+          <span className="text-xs font-semibold text-green-600">
+            {formatCurrency(inflow)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-muted-foreground">Outflow:</span>
+          <span className="text-xs font-semibold text-red-600">
+            {formatCurrency(outflow)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4 pt-1 border-t">
+          <span className="text-xs text-muted-foreground">Net:</span>
+          <span className={cn("text-xs font-semibold", net >= 0 ? "text-green-600" : "text-red-600")}>
+            {net >= 0 ? "+" : ""}{formatCurrency(net)}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function InflowOutflowSkeleton() {
   return (
@@ -190,15 +224,7 @@ export function InflowOutflowChart({
                     width={60}
                     tick={{ fontSize: 11 }}
                   />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value) => (
-                          <span className="font-medium">{formatCurrency(Number(value))}</span>
-                        )}
-                      />
-                    }
-                  />
+                  <ChartTooltip content={<CustomTooltip />} />
                   <Bar
                     dataKey="inflow"
                     fill="var(--color-inflow)"
@@ -285,15 +311,7 @@ export function InflowOutflowChart({
                     tickLine={false}
                     width={70}
                   />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value) => (
-                          <span className="font-medium">{formatCurrency(Number(value))}</span>
-                        )}
-                      />
-                    }
-                  />
+                  <ChartTooltip content={<CustomTooltip />} />
                   <ChartLegend content={<ChartLegendContent />} />
                   <Bar
                     dataKey="inflow"

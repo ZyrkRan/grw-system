@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   LineChart,
   Line,
@@ -8,7 +8,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,9 +17,20 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart"
 import type { TimeframeValue } from "@/components/finances/timeframe-selector"
+import { BalanceChartAccountSelector } from "./balance-chart-account-selector"
+
+interface Account {
+  id: number
+  name: string
+  type: string
+  isActive: boolean
+  currentBalance: string | number | null
+}
 
 interface BalancePoint {
   date: string
@@ -40,7 +51,31 @@ interface BalanceData {
   summary: BalanceSummary
 }
 
+interface AccountBalanceData {
+  accountId: number
+  accountName: string
+  data: BalanceData
+}
+
+interface MultiAccountBalancePoint {
+  date: string
+  label: string
+  [accountId: string]: string | number // Dynamic keys like "1": 1500.50
+}
+
 type Granularity = "daily" | "weekly" | "monthly"
+
+// Color palette for different accounts
+const ACCOUNT_COLORS = [
+  "#3b82f6", // Blue
+  "#10b981", // Green
+  "#f59e0b", // Amber
+  "#ef4444", // Red
+  "#8b5cf6", // Violet
+  "#ec4899", // Pink
+  "#06b6d4", // Cyan
+  "#f97316", // Orange
+]
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -93,6 +128,13 @@ export function BalanceChart({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
+  // Multi-account state (only for full-size mode)
+  const [selectedAccountIds, setSelectedAccountIds] = useState<number[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [multiAccountData, setMultiAccountData] = useState<MultiAccountBalancePoint[]>([])
+  const [multiAccountLoading, setMultiAccountLoading] = useState(false)
+  const [dynamicChartConfig, setDynamicChartConfig] = useState<ChartConfig>({})
+
   // Auto-calculate granularity based on timeframe duration
   const granularity: Granularity = (() => {
     const fromDate = new Date(timeframe.dateFrom)
@@ -108,6 +150,124 @@ export function BalanceChart({
       return "monthly"
     }
   })()
+
+  // Fetch accounts list (only for full-size mode)
+  const fetchAccounts = useCallback(async () => {
+    if (compact) return
+
+    try {
+      const res = await fetch("/api/finances/accounts")
+      if (res.ok) {
+        const result = await res.json()
+        if (result.success) {
+          setAccounts(result.data.filter((acc: Account) => acc.isActive))
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch accounts:", err)
+    }
+  }, [compact])
+
+  useEffect(() => {
+    fetchAccounts()
+  }, [fetchAccounts])
+
+  // Merge balance points by date
+  const mergeBalancePoints = useCallback(
+    (accountsData: AccountBalanceData[]): MultiAccountBalancePoint[] => {
+      // Collect all unique dates
+      const dateSet = new Set<string>()
+      accountsData.forEach(({ data }) => {
+        data.points.forEach((point) => dateSet.add(point.date))
+      })
+
+      // Sort dates chronologically
+      const sortedDates = Array.from(dateSet).sort()
+
+      // Build merged points
+      const merged: MultiAccountBalancePoint[] = sortedDates.map((date) => {
+        const point: MultiAccountBalancePoint = {
+          date,
+          label: "", // Will set from first account's label
+        }
+
+        accountsData.forEach(({ accountId, data }) => {
+          const matchingPoint = data.points.find((p) => p.date === date)
+          if (matchingPoint) {
+            point[String(accountId)] = matchingPoint.balance
+            if (!point.label) point.label = matchingPoint.label
+          }
+        })
+
+        return point
+      })
+
+      return merged
+    },
+    []
+  )
+
+  // Fetch multi-account data
+  const fetchMultiAccountData = useCallback(async () => {
+    if (selectedAccountIds.length === 0) {
+      setMultiAccountData([])
+      return
+    }
+
+    setMultiAccountLoading(true)
+    setError(false)
+
+    try {
+      // Fetch data for all selected accounts in parallel
+      const results = await Promise.all(
+        selectedAccountIds.map(async (accId) => {
+          const params = new URLSearchParams({
+            granularity,
+            dateFrom: timeframe.dateFrom,
+            dateTo: timeframe.dateTo,
+            accountId: String(accId),
+          })
+          const res = await fetch(`/api/finances/analytics/balance?${params}`)
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const result = await res.json()
+          if (!result.success) throw new Error("API returned success: false")
+
+          const account = accounts.find((a) => a.id === accId)
+          return {
+            accountId: accId,
+            accountName: account?.name || `Account ${accId}`,
+            data: result.data as BalanceData,
+          }
+        })
+      )
+
+      // Merge data points by date
+      const mergedPoints = mergeBalancePoints(results)
+      setMultiAccountData(mergedPoints)
+
+      // Build dynamic chart config
+      const config: ChartConfig = {}
+      selectedAccountIds.forEach((accId, idx) => {
+        const account = accounts.find((a) => a.id === accId)
+        config[String(accId)] = {
+          label: account?.name || `Account ${accId}`,
+          color: ACCOUNT_COLORS[idx % ACCOUNT_COLORS.length],
+        }
+      })
+      setDynamicChartConfig(config)
+    } catch (err) {
+      console.error("Failed to fetch multi-account data:", err)
+      setError(true)
+    } finally {
+      setMultiAccountLoading(false)
+    }
+  }, [selectedAccountIds, granularity, timeframe, accounts, mergeBalancePoints])
+
+  useEffect(() => {
+    if (!compact && selectedAccountIds.length > 0) {
+      fetchMultiAccountData()
+    }
+  }, [compact, fetchMultiAccountData])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -140,22 +300,85 @@ export function BalanceChart({
   }, [granularity, timeframe, accountId])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    // Only fetch single-account data when NOT in multi-account mode
+    if (compact || selectedAccountIds.length === 0) {
+      fetchData()
+    }
+  }, [fetchData, compact, selectedAccountIds.length])
+
+  // Multi-account tooltip component
+  function MultiAccountTooltip({ active, payload, label }: any) {
+    if (!active || !payload || payload.length === 0) return null
+
+    return (
+      <div className="rounded-lg border bg-background p-3 shadow-md">
+        <p className="text-sm font-medium mb-2">{label}</p>
+        <div className="space-y-1">
+          {payload.map((entry: any) => {
+            const config = dynamicChartConfig[entry.dataKey]
+            return (
+              <div key={entry.dataKey} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: entry.color }}
+                  />
+                  <span className="text-xs">{config?.label || "Account"}</span>
+                </div>
+                <span className="text-xs font-semibold">
+                  {formatCurrency(Number(entry.value))}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Aggregated summary for multi-account mode
+  const aggregatedSummary = useMemo(() => {
+    if (selectedAccountIds.length === 0 || !multiAccountData.length) {
+      return data?.summary || null
+    }
+
+    // Calculate from multi-account data
+    const firstPoint = multiAccountData[0]
+    const lastPoint = multiAccountData[multiAccountData.length - 1]
+
+    const startBalance = selectedAccountIds.reduce(
+      (sum, id) => sum + (Number(firstPoint[String(id)]) || 0),
+      0
+    )
+    const endBalance = selectedAccountIds.reduce(
+      (sum, id) => sum + (Number(lastPoint[String(id)]) || 0),
+      0
+    )
+
+    return {
+      startBalance,
+      endBalance,
+      netChange: endBalance - startBalance,
+      highBalance: endBalance, // Simplified
+      lowBalance: startBalance, // Simplified
+    }
+  }, [selectedAccountIds, multiAccountData, data])
+
+  const summary = selectedAccountIds.length > 0 ? aggregatedSummary : data?.summary
 
   const netIcon =
-    data && data.summary.netChange > 0 ? (
+    summary && summary.netChange > 0 ? (
       <TrendingUp className="h-4 w-4 text-green-500" />
-    ) : data && data.summary.netChange < 0 ? (
+    ) : summary && summary.netChange < 0 ? (
       <TrendingDown className="h-4 w-4 text-red-500" />
     ) : (
       <Minus className="h-4 w-4 text-muted-foreground" />
     )
 
   const netColor =
-    data && data.summary.netChange > 0
+    summary && summary.netChange > 0
       ? "text-green-600"
-      : data && data.summary.netChange < 0
+      : summary && summary.netChange < 0
         ? "text-red-600"
         : ""
 
@@ -233,7 +456,7 @@ export function BalanceChart({
   // Full-size mode
   return (
     <div>
-      {loading ? (
+      {loading || multiAccountLoading ? (
         <BalanceSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center rounded-md border py-12 text-center">
@@ -245,7 +468,7 @@ export function BalanceChart({
             Retry
           </Button>
         </div>
-      ) : !data || data.points.length === 0 ? (
+      ) : selectedAccountIds.length === 0 && (!data || data.points.length === 0) ? (
         <div className="flex flex-col items-center justify-center rounded-md border py-12 text-center">
           <Minus className="size-12 text-muted-foreground mb-4" />
           <p className="text-lg font-medium">No balance data</p>
@@ -255,74 +478,116 @@ export function BalanceChart({
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Starting Balance</p>
-                <p className="text-lg font-semibold mt-1">
-                  {formatCurrency(data.summary.startBalance)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Current Balance</p>
-                <p className="text-lg font-semibold mt-1">
-                  {formatCurrency(data.summary.endBalance)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                  Net Change {netIcon}
-                </p>
-                <p className={cn("text-lg font-semibold mt-1", netColor)}>
-                  {data.summary.netChange >= 0 ? "+" : ""}
-                  {formatCurrency(data.summary.netChange)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Summary Cards */}
+          {summary && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-muted-foreground">Starting Balance</p>
+                  <p className="text-lg font-semibold mt-1">
+                    {formatCurrency(summary.startBalance)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-muted-foreground">Current Balance</p>
+                  <p className="text-lg font-semibold mt-1">
+                    {formatCurrency(summary.endBalance)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    Net Change {netIcon}
+                  </p>
+                  <p className={cn("text-lg font-semibold mt-1", netColor)}>
+                    {summary.netChange >= 0 ? "+" : ""}
+                    {formatCurrency(summary.netChange)}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
+          {/* Chart Card */}
           <Card>
             <CardContent className="pt-6">
-              <ChartContainer config={balanceChartConfig} className="min-h-[300px] w-full">
-                <LineChart accessibilityLayer data={data.points}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tickFormatter={(v: number) => formatCurrency(v)}
-                    axisLine={false}
-                    tickLine={false}
-                    width={70}
-                  />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value) => (
-                          <span className="font-medium">{formatCurrency(Number(value))}</span>
-                        )}
+              {/* Account Selector Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold">
+                  {selectedAccountIds.length === 0
+                    ? "Balance History"
+                    : "Balance Comparison"}
+                </h3>
+                <BalanceChartAccountSelector
+                  selectedAccountIds={selectedAccountIds}
+                  onSelectionChange={setSelectedAccountIds}
+                  disabled={loading || multiAccountLoading}
+                />
+              </div>
+
+              {/* Chart */}
+              {selectedAccountIds.length === 0 ? (
+                // Single-account mode (existing chart)
+                <ChartContainer config={balanceChartConfig} className="min-h-[300px] w-full">
+                  <LineChart accessibilityLayer data={data?.points || []}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                    <YAxis
+                      tickFormatter={(v: number) => formatCurrency(v)}
+                      axisLine={false}
+                      tickLine={false}
+                      width={70}
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          formatter={(value) => (
+                            <span className="font-medium">{formatCurrency(Number(value))}</span>
+                          )}
+                        />
+                      }
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="balance"
+                      stroke="var(--color-balance)"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4, strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              ) : (
+                // Multi-account mode (new)
+                <ChartContainer config={dynamicChartConfig} className="min-h-[300px] w-full">
+                  <LineChart accessibilityLayer data={multiAccountData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                    <YAxis
+                      tickFormatter={(v: number) => formatCurrency(v)}
+                      axisLine={false}
+                      tickLine={false}
+                      width={70}
+                    />
+                    <ChartTooltip content={<MultiAccountTooltip />} />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    {selectedAccountIds.map((accountId, idx) => (
+                      <Line
+                        key={accountId}
+                        type="monotone"
+                        dataKey={String(accountId)}
+                        stroke={ACCOUNT_COLORS[idx % ACCOUNT_COLORS.length]}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4, strokeWidth: 2 }}
                       />
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="balance"
-                    stroke="var(--color-balance)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4, strokeWidth: 2 }}
-                  />
-                </LineChart>
-              </ChartContainer>
+                    ))}
+                  </LineChart>
+                </ChartContainer>
+              )}
             </CardContent>
           </Card>
         </div>
