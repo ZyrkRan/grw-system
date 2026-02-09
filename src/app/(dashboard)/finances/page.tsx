@@ -104,7 +104,7 @@ export default function FinancesPage() {
             <BalanceChart accountId={selectedAccountId} timeframe={timeframe} compact />
           </div>
 
-          <TransactionsTable accountId={selectedAccountId} timeframe={timeframe} />
+          <TransactionsTable accountId={selectedAccountId} />
         </>
       )}
       {activeTab === "categories" && <CategoriesManager />}
