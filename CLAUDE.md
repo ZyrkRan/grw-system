@@ -17,4 +17,4 @@ For full context about modules, data model, integrations, and API routes, read `
 Ask clarifying questions before starting work when the request is ambiguous, has multiple valid approaches, or lacks context about desired behavior/appearance. Don't assume — confirm.
 
 ## Git Commits
-Auto-commit after completing significant features. Triggers: "commit this" (single feature) or "commit all" (group by domain/type). Use conventional commits (`feat:`, `fix:`, `refactor:`, `chore:`) with concise summaries. Group related changes; keep commits focused and cohesive.
+Auto-commit after completing significant features. Triggers: "commit" you decide best way to commit OR "commit this" (single feature) or "commit all" (commit everything, group if necessary). Use conventional commits (`feat:`, `fix:`, `refactor:`, `chore:`) with concise summaries. Group related changes; keep commits focused and cohesive.
