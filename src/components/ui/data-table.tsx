@@ -662,10 +662,12 @@ export function DataTable<T>({
     if (storageKey) savePageSize(storageKey, pageSize)
   }, [storageKey, pageSize])
 
-  // Reset to first page when data, filters, or sort changes
+  // Reset to first page when row count, filters, or sort changes
+  // (but not when existing rows are just updated)
+  const filteredDataLength = filteredData.length
   React.useEffect(() => {
     setPage(0)
-  }, [filteredData, sort])
+  }, [filteredDataLength, sort])
 
   const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize))
   const paginatedData = sortedData.slice(page * pageSize, (page + 1) * pageSize)

@@ -82,7 +82,7 @@ function formatDate(dateString: string): string {
 
 interface TransactionsTableProps {
   accountId?: string
-  timeframe: TimeframeValue
+  timeframe?: TimeframeValue
 }
 
 export function TransactionsTable({ accountId, timeframe }: TransactionsTableProps) {
@@ -220,7 +220,19 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
       })
       const result = await res.json()
       if (result.success) {
-        fetchTransactions()
+        // Update the transaction in local state instead of refetching all
+        setTransactions((prev) =>
+          prev.map((txn) =>
+            txn.id === transactionId
+              ? {
+                  ...txn,
+                  category: categoryId
+                    ? categories.find((c) => c.id === categoryId) || null
+                    : null,
+                }
+              : txn
+          )
+        )
       }
     } catch {
       console.error("Failed to assign category")
@@ -236,7 +248,7 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
   ) {
     setIsBulkAssigning(true)
     try {
-      await Promise.all(
+      const results = await Promise.all(
         selected.map((txn) =>
           fetch(`/api/finances/transactions/${txn.id}`, {
             method: "PATCH",
@@ -245,8 +257,28 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
           }).then((r) => r.json())
         )
       )
+
+      const successIds = new Set(
+        results
+          .map((r, idx) => (r.success ? selected[idx].id : null))
+          .filter((id): id is number => id !== null)
+      )
+
+      // Update transactions in local state
+      setTransactions((prev) =>
+        prev.map((txn) =>
+          successIds.has(txn.id)
+            ? {
+                ...txn,
+                category: categoryId
+                  ? categories.find((c) => c.id === categoryId) || null
+                  : null,
+              }
+            : txn
+        )
+      )
+
       clearSelection()
-      fetchTransactions()
     } catch {
       console.error("Failed to bulk assign category")
     } finally {
