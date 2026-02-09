@@ -552,22 +552,14 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 onClick={(e) => handleSync(account, e)}
                                 disabled={isSyncing || !!cooldown}
                                 className="h-7 px-2 text-xs whitespace-nowrap"
+                                title={isSyncing ? "Syncing..." : cooldown ? `Wait ${cooldown}s` : "Sync account"}
                               >
                                 {isSyncing ? (
-                                  <>
-                                    <RefreshCw className="mr-1 size-3 animate-spin" />
-                                    Syncing...
-                                  </>
+                                  <RefreshCw className="size-3 animate-spin" />
                                 ) : cooldown ? (
-                                  <>
-                                    <Check className="mr-1 size-3 text-green-500" />
-                                    {cooldown}s
-                                  </>
+                                  <span className="text-green-600 font-medium">{cooldown}s</span>
                                 ) : (
-                                  <>
-                                    <RefreshCw className="mr-1 size-3" />
-                                    Sync
-                                  </>
+                                  <RefreshCw className="size-3" />
                                 )}
                               </Button>
                             )}
