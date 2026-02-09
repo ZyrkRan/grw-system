@@ -116,19 +116,6 @@ function getAccountTypeLabel(type: string): string {
   }
 }
 
-function getAccountTypeVariant(type: string): "default" | "secondary" | "outline" {
-  switch (type) {
-    case "CHECKING":
-      return "default"
-    case "SAVINGS":
-      return "secondary"
-    case "CREDIT":
-      return "outline"
-    default:
-      return "default"
-  }
-}
-
 function AccountIcon({ type, className }: { type: string; className?: string }) {
   const iconClass = cn("size-4", className)
   switch (type) {
@@ -509,9 +496,9 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 )}
                               </div>
                               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                                <Badge variant={getAccountTypeVariant(account.type)} className="text-xs shrink-0">
+                                <span className="text-xs text-muted-foreground shrink-0">
                                   {getAccountTypeLabel(account.type)}
-                                </Badge>
+                                </span>
                                 {!account.isActive && (
                                   <Badge variant="outline" className="text-xs text-muted-foreground shrink-0">
                                     Inactive
