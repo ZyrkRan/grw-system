@@ -155,7 +155,7 @@ export function AccountDialog({
 
           <div className="space-y-2">
             <Label htmlFor="acc-type">Type *</Label>
-            <Select value={type} onValueChange={setType}>
+            <Select value={type} onValueChange={setType} disabled={!!account?.plaidAccountId}>
               <SelectTrigger id="acc-type" className="w-full">
                 <SelectValue placeholder="Select account type" />
               </SelectTrigger>
@@ -165,6 +165,11 @@ export function AccountDialog({
                 <SelectItem value="CREDIT">Credit</SelectItem>
               </SelectContent>
             </Select>
+            {account?.plaidAccountId && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Account type is locked for Plaid-linked accounts
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

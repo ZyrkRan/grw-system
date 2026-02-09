@@ -31,6 +31,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { TransactionDialog } from "@/components/finances/transaction-dialog"
+import type { TimeframeValue } from "@/components/finances/timeframe-selector"
 
 interface AccountRef {
   id: number
@@ -81,9 +82,10 @@ function formatDate(dateString: string): string {
 
 interface TransactionsTableProps {
   accountId?: string
+  timeframe: TimeframeValue
 }
 
-export function TransactionsTable({ accountId }: TransactionsTableProps) {
+export function TransactionsTable({ accountId, timeframe }: TransactionsTableProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<CategoryRef[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -131,9 +133,15 @@ export function TransactionsTable({ accountId }: TransactionsTableProps) {
   const fetchTransactions = useCallback(async () => {
     setIsLoading(true)
     try {
-      const url = accountId && accountId !== "all"
-        ? `/api/finances/transactions?accountId=${accountId}`
-        : "/api/finances/transactions"
+      const params = new URLSearchParams()
+      if (accountId && accountId !== "all") {
+        params.set("accountId", accountId)
+      }
+      if (timeframe) {
+        params.set("dateFrom", timeframe.dateFrom)
+        params.set("dateTo", timeframe.dateTo)
+      }
+      const url = `/api/finances/transactions?${params}`
       const res = await fetch(url)
       const result = await res.json()
 
@@ -145,7 +153,7 @@ export function TransactionsTable({ accountId }: TransactionsTableProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [accountId])
+  }, [accountId, timeframe])
 
   useEffect(() => {
     fetchTransactions()

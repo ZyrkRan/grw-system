@@ -11,6 +11,7 @@ import {
   CreditCard,
   Building2,
   Check,
+  Upload,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -39,6 +40,7 @@ import {
 import { AccountDialog } from "@/components/finances/account-dialog"
 import { PlaidLinkButton } from "@/components/finances/plaid-link-button"
 import { PlaidReconnectButton } from "@/components/finances/plaid-reconnect-button"
+import { CSVImportDialog } from "@/components/finances/csv-import-dialog"
 
 interface PlaidItemInfo {
   id: string
@@ -123,6 +125,7 @@ export function AccountsList() {
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
+  const [importTarget, setImportTarget] = useState<Account | null>(null)
   // Sync state per account
   const [syncingAccounts, setSyncingAccounts] = useState<Set<string>>(new Set())
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
@@ -160,6 +163,10 @@ export function AccountsList() {
   function handleDeleteClick(account: Account) {
     setDeleteTarget(account)
     setDeleteError("")
+  }
+
+  function handleImportCSV(account: Account) {
+    setImportTarget(account)
   }
 
   async function handleDeleteConfirm() {
@@ -272,17 +279,36 @@ export function AccountsList() {
     fetchAccounts()
   }
 
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Bank Accounts</h2>
-        <div className="flex gap-2">
-          <PlaidLinkButton onSuccess={fetchAccounts} />
-          <Button onClick={handleAddAccount}>
-            <Plus className="mr-2 size-4" />
-            Add Account
-          </Button>
-        </div>
+        <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button>
+              <Plus className="mr-2 size-4" />
+              Add Account
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <PlaidLinkButton
+              onSuccess={fetchAccounts}
+              asDropdownItem
+              onInitiate={() => setAddMenuOpen(false)}
+            />
+            <DropdownMenuItem onClick={handleAddAccount}>
+              <Plus className="mr-2 size-4" />
+              <div className="flex flex-col">
+                <span>Add Manual Account</span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  Enter transactions manually or import CSV
+                </span>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Accounts Grid */}
@@ -308,7 +334,7 @@ export function AccountsList() {
             <Landmark className="size-12 text-muted-foreground mb-4" />
             <p className="text-lg font-medium">No accounts yet</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Add a manual account or connect your bank via Plaid.
+              Click "Add Account" to link your bank or create a manual account.
             </p>
           </CardContent>
         </Card>
@@ -423,6 +449,20 @@ export function AccountsList() {
                       )}
                     </div>
                   )}
+
+                  {!isPlaid && (
+                    <div className="pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleImportCSV(account)}
+                        className="h-7 px-2.5 text-xs"
+                      >
+                        <Upload className="mr-1.5 size-3" />
+                        Import CSV
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )
@@ -436,6 +476,17 @@ export function AccountsList() {
         onOpenChange={setFormDialogOpen}
         account={editingAccount}
         onSuccess={handleFormSuccess}
+      />
+
+      {/* CSV Import Dialog */}
+      <CSVImportDialog
+        accountId={importTarget?.id || 0}
+        open={!!importTarget}
+        onOpenChange={(open: boolean) => !open && setImportTarget(null)}
+        onSuccess={() => {
+          setImportTarget(null)
+          fetchAccounts()
+        }}
       />
 
       {/* Delete Confirmation */}
