@@ -15,3 +15,25 @@ For full context about modules, data model, integrations, and API routes, read `
 
 ## Communication
 Ask clarifying questions before starting work when the request is ambiguous, has multiple valid approaches, or lacks context about desired behavior/appearance. Don't assume — confirm.
+
+## Git Commit Strategy
+Proactively monitor for uncommitted changes and commit automatically after completing significant features or milestones. Follow these guidelines:
+
+**Commit Triggers:**
+- After implementing complete features or major updates
+- When user says "commit this" → commit current feature with focused description
+- When user says "commit all" → group changes by feature/module and create separate commits per logical unit
+
+**Commit Message Format:**
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
+- First line: concise summary (50-70 chars)
+- Body: bullet points explaining what changed and why (not how)
+- Always include: `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`
+
+**Grouping Strategy:**
+When committing multiple files, group by:
+1. Feature domain (e.g., finances, services, jobs)
+2. Change type (e.g., UI components, API routes, database schema)
+3. Logical dependency (e.g., component + its route + its types)
+
+Never commit unrelated changes together. Each commit should represent one cohesive unit of work.
