@@ -496,18 +496,18 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 )}
                               </div>
                               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                {account.currentBalance !== null && account.currentBalance !== undefined && (
+                                  <span className="text-sm font-medium text-foreground shrink-0">
+                                    {formatCurrency(Number(account.currentBalance))}
+                                  </span>
+                                )}
                                 <span className="text-xs text-muted-foreground shrink-0">
-                                  {getAccountTypeLabel(account.type)}
+                                  • {getAccountTypeLabel(account.type)}
                                 </span>
                                 {!account.isActive && (
                                   <Badge variant="outline" className="text-xs text-muted-foreground shrink-0">
                                     Inactive
                                   </Badge>
-                                )}
-                                {account.currentBalance !== null && account.currentBalance !== undefined && (
-                                  <span className="text-sm font-medium text-foreground shrink-0">
-                                    • {formatCurrency(Number(account.currentBalance))}
-                                  </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
