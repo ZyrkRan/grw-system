@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     let removedCount = 0
 
     await prisma.$transaction(async (tx) => {
-      // Process added transactions — bulk insert
+      // Process added transactions — filter out user-deleted ones
       const addedData = added
         .filter((txn) => accountMap.has(txn.account_id))
         .map((txn) => {
@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
           const amount = Math.abs(txn.amount)
           const type: TransactionType = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
           return {
+            plaidTransactionId: txn.transaction_id,
             date,
             description: txn.name || txn.merchant_name || "Unknown",
             amount,
@@ -100,47 +101,100 @@ export async function POST(request: NextRequest) {
             statementYear: date.getFullYear(),
             isPending: txn.pending,
             merchantName: txn.merchant_name || null,
-            plaidTransactionId: txn.transaction_id,
             plaidStatus: txn.pending ? "pending" : "posted",
             rawPlaidData: JSON.parse(JSON.stringify(txn)),
           }
         })
 
+      // Filter out transactions that the user has deleted
       if (addedData.length > 0) {
-        await tx.bankTransaction.createMany({ data: addedData })
-        addedCount = addedData.length
+        const plaidIds = addedData
+          .map((txn) => txn.plaidTransactionId)
+          .filter((id): id is string => !!id)
+
+        // Fetch all deleted transaction IDs for this user (single indexed query)
+        const deletedRecords = await tx.deletedPlaidTransaction.findMany({
+          where: {
+            userId,
+            plaidTransactionId: { in: plaidIds },
+          },
+          select: { plaidTransactionId: true },
+        })
+
+        // Build Set for O(1) lookup
+        const deletedIds = new Set(
+          deletedRecords.map((r) => r.plaidTransactionId)
+        )
+
+        // Filter out deleted transactions
+        const transactionsToInsert = addedData.filter(
+          (txn) => !deletedIds.has(txn.plaidTransactionId)
+        )
+
+        if (transactionsToInsert.length > 0) {
+          await tx.bankTransaction.createMany({ data: transactionsToInsert })
+          addedCount = transactionsToInsert.length
+        }
+
+        // Log filtered count for visibility
+        const filteredCount = addedData.length - transactionsToInsert.length
+        if (filteredCount > 0) {
+          console.log(
+            `[Sync] Filtered out ${filteredCount} user-deleted transactions for user ${userId}`
+          )
+        }
       }
 
-      // Process modified transactions — concurrent updates
+      // Process modified transactions — skip if user deleted
       if (modified.length > 0) {
-        const updateResults = await Promise.all(
-          modified.map(async (txn) => {
-            const date = new Date(txn.date)
-            const amount = Math.abs(txn.amount)
-            const type = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
+        const modifiedPlaidIds = modified
+          .map((txn) => txn.transaction_id)
+          .filter((id): id is string => !!id)
 
-            try {
-              await tx.bankTransaction.update({
-                where: { plaidTransactionId: txn.transaction_id },
-                data: {
-                  date,
-                  description: txn.name || txn.merchant_name || "Unknown",
-                  amount,
-                  type,
-                  statementMonth: date.getMonth() + 1,
-                  statementYear: date.getFullYear(),
-                  isPending: txn.pending,
-                  merchantName: txn.merchant_name || null,
-                  plaidStatus: txn.pending ? "pending" : "posted",
-                  rawPlaidData: JSON.parse(JSON.stringify(txn)),
-                },
-              })
-              return true
-            } catch {
-              // Transaction doesn't exist, skip
-              return false
-            }
-          })
+        // Fetch deleted IDs for modified transactions
+        const deletedModifiedRecords = await tx.deletedPlaidTransaction.findMany({
+          where: {
+            userId,
+            plaidTransactionId: { in: modifiedPlaidIds },
+          },
+          select: { plaidTransactionId: true },
+        })
+
+        const deletedModifiedIds = new Set(
+          deletedModifiedRecords.map((r) => r.plaidTransactionId)
+        )
+
+        // Filter out deleted transactions from modified array
+        const updateResults = await Promise.all(
+          modified
+            .filter((txn) => !deletedModifiedIds.has(txn.transaction_id))
+            .map(async (txn) => {
+              const date = new Date(txn.date)
+              const amount = Math.abs(txn.amount)
+              const type = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
+
+              try {
+                await tx.bankTransaction.update({
+                  where: { plaidTransactionId: txn.transaction_id },
+                  data: {
+                    date,
+                    description: txn.name || txn.merchant_name || "Unknown",
+                    amount,
+                    type,
+                    statementMonth: date.getMonth() + 1,
+                    statementYear: date.getFullYear(),
+                    isPending: txn.pending,
+                    merchantName: txn.merchant_name || null,
+                    plaidStatus: txn.pending ? "pending" : "posted",
+                    rawPlaidData: JSON.parse(JSON.stringify(txn)),
+                  },
+                })
+                return true
+              } catch {
+                // Transaction doesn't exist, skip
+                return false
+              }
+            })
         )
         modifiedCount = updateResults.filter(Boolean).length
       }

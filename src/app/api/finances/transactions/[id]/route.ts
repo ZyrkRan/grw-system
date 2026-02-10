@@ -102,7 +102,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    // Verify ownership
+    // Verify ownership and fetch transaction
     const transaction = await prisma.bankTransaction.findFirst({
       where: { id: txnId, userId },
     })
@@ -114,7 +114,31 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       )
     }
 
-    await prisma.bankTransaction.delete({ where: { id: txnId } })
+    // Use transaction to ensure atomicity
+    await prisma.$transaction(async (tx) => {
+      // If this is a Plaid-sourced transaction, track the deletion
+      if (transaction.plaidTransactionId) {
+        await tx.deletedPlaidTransaction.upsert({
+          where: {
+            userId_plaidTransactionId: {
+              userId,
+              plaidTransactionId: transaction.plaidTransactionId,
+            },
+          },
+          create: {
+            userId,
+            plaidTransactionId: transaction.plaidTransactionId,
+            transactionData: transaction.rawPlaidData || null,
+          },
+          update: {
+            deletedAt: new Date(), // Update timestamp if re-deleted
+          },
+        })
+      }
+
+      // Delete the transaction
+      await tx.bankTransaction.delete({ where: { id: txnId } })
+    })
 
     return NextResponse.json({ success: true, data: { deleted: true } })
   } catch (error) {

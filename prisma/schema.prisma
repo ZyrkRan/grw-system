@@ -60,10 +60,11 @@ model User {
   serviceLogs         ServiceLog[]
   invoices            Invoice[]
   plaidItems          PlaidItem[]
-  bankAccounts        BankAccount[]
-  bankTransactions    BankTransaction[]
-  transactionCategories TransactionCategory[]
-  categorizationRules CategorizationRule[]
+  bankAccounts           BankAccount[]
+  bankTransactions       BankTransaction[]
+  transactionCategories  TransactionCategory[]
+  categorizationRules    CategorizationRule[]
+  deletedPlaidTransactions DeletedPlaidTransaction[]
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -274,6 +275,22 @@ model BankTransaction {
   serviceLog ServiceLog?          @relation(fields: [serviceLogId], references: [id])
   category   TransactionCategory? @relation(fields: [categoryId], references: [id])
   user       User                 @relation(fields: [userId], references: [id])
+}
+
+// ─── DeletedPlaidTransaction ─────────────────────────────────────────────────
+
+model DeletedPlaidTransaction {
+  id                 Int      @id @default(autoincrement())
+  userId             String
+  plaidTransactionId String
+  deletedAt          DateTime @default(now())
+  transactionData    Json?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, plaidTransactionId])
+  @@index([plaidTransactionId])
+  @@index([userId, deletedAt])
 }
 
 // ─── TransactionCategory ─────────────────────────────────────────────────────
