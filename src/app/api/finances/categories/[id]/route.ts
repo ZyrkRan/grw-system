@@ -53,7 +53,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const { name, color, parentId, isGroup, position } = parsed.data
+    const { name, color, parentId, isGroup, position, attachmentPrompt } = parsed.data
 
     // If name is changing, regenerate slug
     let slug: string | undefined
@@ -74,6 +74,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(parentId !== undefined && { parentId }),
         ...(isGroup !== undefined && { isGroup }),
         ...(position !== undefined && { position }),
+        ...(attachmentPrompt !== undefined && { attachmentPrompt }),
       },
       include: {
         _count: { select: { transactions: true } },

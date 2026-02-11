@@ -79,8 +79,9 @@ export async function GET(request: NextRequest) {
         take: pageSize,
         include: {
           account: { select: { id: true, name: true } },
-          category: { select: { id: true, name: true, color: true } },
+          category: { select: { id: true, name: true, color: true, attachmentPrompt: true } },
           serviceLog: { select: { id: true, serviceName: true } },
+          _count: { select: { attachments: true } },
         },
       }),
       prisma.bankTransaction.count({ where }),

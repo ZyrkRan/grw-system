@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { del } from "@vercel/blob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@/generated/prisma"
@@ -114,15 +115,24 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    // Verify ownership and fetch transaction
+    // Verify ownership and fetch transaction with attachments
     const transaction = await prisma.bankTransaction.findFirst({
       where: { id: txnId, userId },
+      include: { attachments: { select: { url: true } } },
     })
 
     if (!transaction) {
       return NextResponse.json(
         { success: false, error: "Transaction not found" },
         { status: 404 }
+      )
+    }
+
+    // Clean up attachment blobs
+    if (transaction.attachments.length > 0) {
+      const urls = transaction.attachments.map((a) => a.url)
+      await del(urls).catch((err) =>
+        console.error("Failed to delete attachment blobs:", err)
       )
     }
 

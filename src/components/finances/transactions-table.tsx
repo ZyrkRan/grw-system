@@ -9,6 +9,7 @@ import {
   Loader2,
   X,
   Tags,
+  Paperclip,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -62,6 +63,7 @@ interface Transaction {
   account: AccountRef
   category: CategoryRef | null
   serviceLog: ServiceLogRef | null
+  _count?: { attachments: number }
 }
 
 interface PaginationInfo {
@@ -330,6 +332,9 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       render: (_, row) => (
         <div className="flex items-center gap-2">
           <span className="max-w-[200px] truncate">{row.description}</span>
+          {(row._count?.attachments ?? 0) > 0 && (
+            <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
+          )}
           {row.isPending && (
             <Badge
               variant="outline"

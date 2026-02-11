@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { name, color, parentId, isGroup, position } = parsed.data
+    const { name, color, parentId, isGroup, position, attachmentPrompt } = parsed.data
 
     // Auto-generate slug from name
     const slug = name
@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
         parentId: parentId || null,
         isGroup,
         position,
+        attachmentPrompt,
       },
       include: {
         _count: { select: { transactions: true } },

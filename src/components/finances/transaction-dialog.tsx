@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { TransactionAttachments } from "./transaction-attachments"
 
 interface AccountRef {
   id: number
@@ -32,6 +33,16 @@ interface CategoryRef {
   id: number
   name: string
   color: string
+  attachmentPrompt?: boolean
+}
+
+interface AttachmentData {
+  id: number
+  fileName: string
+  fileType: string
+  fileSize: number
+  url: string
+  createdAt: string
 }
 
 interface TransactionData {
@@ -74,8 +85,25 @@ export function TransactionDialog({
   const [merchantName, setMerchantName] = useState("")
   const [notes, setNotes] = useState("")
 
+  const [attachments, setAttachments] = useState<AttachmentData[]>([])
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
+
+  // Fetch attachments when editing
+  useEffect(() => {
+    if (!open || !transaction?.id) {
+      setAttachments([])
+      return
+    }
+
+    fetch(`/api/finances/transactions/${transaction.id}/attachments`)
+      .then((r) => r.json())
+      .then((result) => {
+        if (result.success) setAttachments(result.data)
+      })
+      .catch((err) => console.error("Failed to load attachments:", err))
+  }, [open, transaction?.id])
 
   // Fetch accounts and categories when dialog opens
   useEffect(() => {
@@ -91,10 +119,10 @@ export function TransactionDialog({
         if (catResult.success) {
           const flat: CategoryRef[] = []
           for (const cat of catResult.data) {
-            flat.push({ id: cat.id, name: cat.name, color: cat.color })
+            flat.push({ id: cat.id, name: cat.name, color: cat.color, attachmentPrompt: cat.attachmentPrompt })
             if (cat.children) {
               for (const child of cat.children) {
-                flat.push({ id: child.id, name: child.name, color: child.color })
+                flat.push({ id: child.id, name: child.name, color: child.color, attachmentPrompt: child.attachmentPrompt })
               }
             }
           }
@@ -338,6 +366,20 @@ export function TransactionDialog({
                   rows={3}
                 />
               </div>
+
+              {/* Attachments — only shown when editing an existing transaction */}
+              {isEditing && transaction?.id && (
+                <TransactionAttachments
+                  transactionId={transaction.id}
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  promptMessage={
+                    categories.find((c) => String(c.id) === categoryId)?.attachmentPrompt
+                      ? `Consider attaching a receipt for ${categories.find((c) => String(c.id) === categoryId)?.name} transactions.`
+                      : null
+                  }
+                />
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="submit" disabled={isSubmitting}>

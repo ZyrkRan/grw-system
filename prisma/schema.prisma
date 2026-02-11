@@ -55,16 +55,17 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  customers           Customer[]
-  serviceTypes        ServiceType[]
-  serviceLogs         ServiceLog[]
-  invoices            Invoice[]
-  plaidItems          PlaidItem[]
-  bankAccounts           BankAccount[]
-  bankTransactions       BankTransaction[]
-  transactionCategories  TransactionCategory[]
-  categorizationRules    CategorizationRule[]
+  customers                Customer[]
+  serviceTypes             ServiceType[]
+  serviceLogs              ServiceLog[]
+  invoices                 Invoice[]
+  plaidItems               PlaidItem[]
+  bankAccounts             BankAccount[]
+  bankTransactions         BankTransaction[]
+  transactionCategories    TransactionCategory[]
+  categorizationRules      CategorizationRule[]
   deletedPlaidTransactions DeletedPlaidTransaction[]
+  transactionAttachments   TransactionAttachment[]
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -271,10 +272,11 @@ model BankTransaction {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
-  account    BankAccount          @relation(fields: [accountId], references: [id])
-  serviceLog ServiceLog?          @relation(fields: [serviceLogId], references: [id])
-  category   TransactionCategory? @relation(fields: [categoryId], references: [id])
-  user       User                 @relation(fields: [userId], references: [id])
+  account     BankAccount               @relation(fields: [accountId], references: [id])
+  serviceLog  ServiceLog?               @relation(fields: [serviceLogId], references: [id])
+  category    TransactionCategory?      @relation(fields: [categoryId], references: [id])
+  user        User                      @relation(fields: [userId], references: [id])
+  attachments TransactionAttachment[]
 }
 
 // ─── DeletedPlaidTransaction ─────────────────────────────────────────────────
@@ -293,20 +295,39 @@ model DeletedPlaidTransaction {
   @@index([userId, deletedAt])
 }
 
+// ─── TransactionAttachment ───────────────────────────────────────────────────
+
+model TransactionAttachment {
+  id            Int      @id @default(autoincrement())
+  transactionId Int
+  userId        String
+  fileName      String
+  fileType      String
+  fileSize      Int
+  url           String
+  createdAt     DateTime @default(now())
+
+  transaction BankTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id])
+
+  @@index([transactionId])
+}
+
 // ─── TransactionCategory ─────────────────────────────────────────────────────
 
 model TransactionCategory {
-  id        Int      @id @default(autoincrement())
-  userId    String?
-  name      String
-  slug      String
-  color     String
-  isDefault Boolean  @default(false)
-  position  Int      @default(0)
-  parentId  Int?
-  isGroup   Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               Int      @id @default(autoincrement())
+  userId           String?
+  name             String
+  slug             String
+  color            String
+  isDefault        Boolean  @default(false)
+  position         Int      @default(0)
+  parentId         Int?
+  isGroup          Boolean  @default(false)
+  attachmentPrompt Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   transactions        BankTransaction[]
   categorizationRules CategorizationRule[]

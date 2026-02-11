@@ -123,6 +123,7 @@ export const createCategorySchema = z.object({
   parentId: optionalIntId,
   isGroup: z.boolean().default(false),
   position: z.number().int().min(0).default(0),
+  attachmentPrompt: z.boolean().default(false),
 })
 
 export const updateCategorySchema = z.object({
@@ -131,6 +132,7 @@ export const updateCategorySchema = z.object({
   parentId: z.coerce.number().int().positive().nullable().optional(),
   isGroup: z.boolean().optional(),
   position: z.number().int().min(0).optional(),
+  attachmentPrompt: z.boolean().optional(),
 })
 
 export const reorderCategoriesSchema = z.object({
@@ -140,6 +142,19 @@ export const reorderCategoriesSchema = z.object({
     parentId: z.coerce.number().int().positive().nullable().optional(),
   })).min(1).max(200),
 })
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+export const ATTACHMENT_MAX_COUNT = 10
+export const ATTACHMENT_MAX_SIZE = 5 * 1024 * 1024 // 5MB
+export const ATTACHMENT_ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+] as const
 
 // ---------------------------------------------------------------------------
 // Categorization rules

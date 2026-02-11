@@ -42,6 +42,7 @@ interface CategoryData {
   color: string
   isGroup: boolean
   parentId: number | null
+  attachmentPrompt?: boolean
 }
 
 interface CategoryDialogProps {
@@ -65,6 +66,7 @@ export function CategoryDialog({
   const [color, setColor] = useState("#3b82f6")
   const [isGroup, setIsGroup] = useState(false)
   const [parentId, setParentId] = useState("")
+  const [attachmentPrompt, setAttachmentPrompt] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
 
@@ -76,11 +78,13 @@ export function CategoryDialog({
       setColor(category.color)
       setIsGroup(category.isGroup)
       setParentId(category.parentId ? String(category.parentId) : "")
+      setAttachmentPrompt(category.attachmentPrompt ?? false)
     } else {
       setName("")
       setColor("#3b82f6")
       setIsGroup(false)
       setParentId("")
+      setAttachmentPrompt(false)
     }
     setError("")
   }, [open, category])
@@ -116,6 +120,7 @@ export function CategoryDialog({
             parentId && parentId !== "none"
               ? parseInt(parentId, 10)
               : null,
+          attachmentPrompt: isGroup ? false : attachmentPrompt,
         }),
       })
 
@@ -211,6 +216,24 @@ export function CategoryDialog({
               This is a category group (parent)
             </Label>
           </div>
+
+          {!isGroup && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="cat-attachment-prompt"
+                checked={attachmentPrompt}
+                onCheckedChange={(checked) => setAttachmentPrompt(checked === true)}
+              />
+              <div>
+                <Label htmlFor="cat-attachment-prompt" className="cursor-pointer">
+                  Prompt for attachments
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Remind to attach receipts when this category is used
+                </p>
+              </div>
+            </div>
+          )}
 
           {!isGroup && availableGroups.length > 0 && (
             <div className="space-y-2">
