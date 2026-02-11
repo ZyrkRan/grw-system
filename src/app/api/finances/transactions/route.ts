@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@/generated/prisma"
+import {
+  transactionQuerySchema,
+  createTransactionSchema,
+  searchParamsToObject,
+  formatZodError,
+} from "@/lib/validations/finances"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -10,18 +17,21 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = session.user!.id!
-  const { searchParams } = request.nextUrl
+  const raw = searchParamsToObject(request.nextUrl.searchParams)
+  const parsed = transactionQuerySchema.safeParse(raw)
 
-  const accountId = searchParams.get("accountId")
-  const categoryId = searchParams.get("categoryId")
-  const type = searchParams.get("type")
-  const dateFrom = searchParams.get("dateFrom")
-  const dateTo = searchParams.get("dateTo")
-  const search = searchParams.get("search")
-  const month = searchParams.get("month")
-  const year = searchParams.get("year")
-  const isPending = searchParams.get("isPending")
-  const uncategorized = searchParams.get("uncategorized")
+  if (!parsed.success) {
+    return NextResponse.json(
+      { success: false, error: formatZodError(parsed.error) },
+      { status: 400 }
+    )
+  }
+
+  const {
+    accountId, categoryId, type, dateFrom, dateTo,
+    search, month, year, isPending, uncategorized,
+    page, pageSize,
+  } = parsed.data
 
   try {
     // Parse dates with proper time boundaries to avoid timezone issues
@@ -43,9 +53,9 @@ export async function GET(request: NextRequest) {
 
     const where: Prisma.BankTransactionWhereInput = {
       userId,
-      ...(accountId && { accountId: parseInt(accountId, 10) }),
-      ...(categoryId && { categoryId: parseInt(categoryId, 10) }),
-      ...(type && { type: type as "INFLOW" | "OUTFLOW" }),
+      ...(accountId && { accountId }),
+      ...(categoryId && { categoryId }),
+      ...(type && { type }),
       ...dateFilter,
       ...(search && {
         OR: [
@@ -53,25 +63,39 @@ export async function GET(request: NextRequest) {
           { merchantName: { contains: search, mode: "insensitive" as const } },
         ],
       }),
-      ...(month && { statementMonth: parseInt(month, 10) }),
-      ...(year && { statementYear: parseInt(year, 10) }),
-      ...(isPending !== null && isPending !== undefined && isPending !== "" && {
-        isPending: isPending === "true",
-      }),
+      ...(month && { statementMonth: month }),
+      ...(year && { statementYear: year }),
+      ...(isPending && { isPending: isPending === "true" }),
       ...(uncategorized === "true" && { categoryId: null }),
     }
 
-    const transactions = await prisma.bankTransaction.findMany({
-      where,
-      orderBy: { date: "desc" },
-      include: {
-        account: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true, color: true } },
-        serviceLog: { select: { id: true, serviceName: true } },
+    const skip = (page - 1) * pageSize
+
+    const [transactions, total] = await Promise.all([
+      prisma.bankTransaction.findMany({
+        where,
+        orderBy: { date: "desc" },
+        skip,
+        take: pageSize,
+        include: {
+          account: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true, color: true } },
+          serviceLog: { select: { id: true, serviceName: true } },
+        },
+      }),
+      prisma.bankTransaction.count({ where }),
+    ])
+
+    return NextResponse.json({
+      success: true,
+      data: transactions,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
       },
     })
-
-    return NextResponse.json({ success: true, data: transactions })
   } catch (error) {
     console.error("Failed to fetch transactions:", error)
     return NextResponse.json(
@@ -89,28 +113,25 @@ export async function POST(request: NextRequest) {
 
   const userId = session.user!.id!
 
+  const rl = checkRateLimit(`txn-create:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   try {
     const body = await request.json()
-    const { date, description, amount, type, accountId, notes, categoryId, serviceLogId, merchantName } = body
+    const parsed = createTransactionSchema.safeParse(body)
 
-    if (!date || !description || amount === undefined || !type || !accountId) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "date, description, amount, type, and accountId are required" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
 
-    const validTypes = ["INFLOW", "OUTFLOW"]
-    if (!validTypes.includes(type)) {
-      return NextResponse.json(
-        { success: false, error: "Type must be INFLOW or OUTFLOW" },
-        { status: 400 }
-      )
-    }
+    const { date, description, amount, type, accountId, notes, categoryId, serviceLogId, merchantName } = parsed.data
 
     // Verify account ownership
     const account = await prisma.bankAccount.findFirst({
-      where: { id: parseInt(accountId, 10), userId },
+      where: { id: accountId, userId },
     })
 
     if (!account) {
@@ -127,17 +148,17 @@ export async function POST(request: NextRequest) {
     const transaction = await prisma.bankTransaction.create({
       data: {
         date: txnDate,
-        description: description.trim(),
-        amount: parseFloat(amount),
+        description,
+        amount,
         type,
-        accountId: parseInt(accountId, 10),
+        accountId,
         userId,
         statementMonth,
         statementYear,
-        notes: notes?.trim() || null,
-        categoryId: categoryId ? parseInt(categoryId, 10) : null,
-        serviceLogId: serviceLogId ? parseInt(serviceLogId, 10) : null,
-        merchantName: merchantName?.trim() || null,
+        notes: notes || null,
+        categoryId: categoryId || null,
+        serviceLogId: serviceLogId || null,
+        merchantName: merchantName || null,
       },
       include: {
         account: { select: { id: true, name: true } },

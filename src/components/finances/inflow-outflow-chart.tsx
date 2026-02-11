@@ -8,11 +8,12 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { TrendingUp, TrendingDown, Minus, ChevronDown } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ArrowUpRight, ArrowDownRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 import {
   ChartContainer,
   ChartTooltip,
@@ -187,9 +188,13 @@ export function InflowOutflowChart({
       <Card>
         <CardContent className="pt-6">
           {loading ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-[200px] w-full hidden md:block" />
+              <div className="grid grid-cols-2 gap-2">
+                <Skeleton className="h-[60px] rounded-lg" />
+                <Skeleton className="h-[60px] rounded-lg" />
+              </div>
+              <Skeleton className="h-3 w-24" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -204,30 +209,46 @@ export function InflowOutflowChart({
               <p className="text-sm text-muted-foreground">No data</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 min-h-[180px]">
               <button
                 type="button"
                 className="flex items-center justify-between w-full md:cursor-default"
                 onClick={() => setCompactOpen((o) => !o)}
               >
                 <h3 className="text-sm font-semibold">Inflow/Outflow</h3>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={cn("font-medium", netColor)}>
-                    {data.summary.netChange >= 0 ? "+" : ""}
-                    {formatCurrency(data.summary.netChange)}
-                  </span>
-                  {netIcon}
-                  <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
-                </div>
+                <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
               </button>
-              <div className="flex items-center gap-1 text-xs">
-                <span className="text-green-600 font-medium">{formatCurrency(data.summary.totalInflow)}</span>
-                <span className="text-muted-foreground">in</span>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-red-600 font-medium">{formatCurrency(data.summary.totalOutflow)}</span>
-                <span className="text-muted-foreground">out</span>
+
+              {/* Mini stat blocks */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-2.5">
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <ArrowUpRight className="size-3.5 text-green-600" />
+                    <span className="text-xs text-muted-foreground">Inflow</span>
+                  </div>
+                  <p className="text-sm font-semibold text-green-600">{formatCurrency(data.summary.totalInflow)}</p>
+                </div>
+                <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-2.5">
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <ArrowDownRight className="size-3.5 text-red-600" />
+                    <span className="text-xs text-muted-foreground">Outflow</span>
+                  </div>
+                  <p className="text-sm font-semibold text-red-600">{formatCurrency(data.summary.totalOutflow)}</p>
+                </div>
               </div>
+
+              {/* Net change */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">Net</span>
+                <span className={cn("font-semibold", netColor)}>
+                  {data.summary.netChange >= 0 ? "+" : ""}
+                  {formatCurrency(data.summary.netChange)}
+                </span>
+                {netIcon}
+              </div>
+
               <div className={cn(compactOpen ? "block" : "hidden md:block")}>
+                <Separator className="mb-3" />
                 <ChartContainer config={chartConfig} className="h-[200px] w-full">
                   <BarChart accessibilityLayer data={data.points}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />

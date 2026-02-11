@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { createAccountSchema, formatZodError } from "@/lib/validations/finances"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -42,33 +44,30 @@ export async function POST(request: NextRequest) {
 
   const userId = session.user!.id!
 
+  const rl = checkRateLimit(`account-create:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   try {
     const body = await request.json()
-    const { name, type, accountNumber, currentBalance } = body
+    const parsed = createAccountSchema.safeParse(body)
 
-    if (!name || !type) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Name and type are required" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
 
-    const validTypes = ["CHECKING", "SAVINGS", "CREDIT"]
-    if (!validTypes.includes(type)) {
-      return NextResponse.json(
-        { success: false, error: "Type must be CHECKING, SAVINGS, or CREDIT" },
-        { status: 400 }
-      )
-    }
+    const { name, type, accountNumber, currentBalance } = parsed.data
 
     const account = await prisma.bankAccount.create({
       data: {
-        name: name.trim(),
+        name,
         type,
-        accountNumber: accountNumber?.trim() || null,
+        accountNumber: accountNumber || null,
         userId,
         isActive: true,
-        ...(currentBalance != null && currentBalance !== "" ? { currentBalance: parseFloat(currentBalance) } : {}),
+        ...(currentBalance != null ? { currentBalance } : {}),
       },
     })
 

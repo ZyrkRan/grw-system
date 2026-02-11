@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { TransactionType } from "@/generated/prisma"
 import { plaidClient } from "@/lib/plaid"
 import { RemovedTransaction, Transaction } from "plaid"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
+import { plaidSyncSchema, formatZodError } from "@/lib/validations/finances"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -13,18 +15,24 @@ export async function POST(request: NextRequest) {
 
   const userId = session.user!.id!
 
+  // Rate limit: Plaid sync is an expensive external API call
+  const rl = checkRateLimit(`plaid-sync:${userId}`, rateLimits.plaidSync)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   let plaidItemId: string | undefined
 
   try {
     const body = await request.json()
-    plaidItemId = body.plaidItemId
+    const parsed = plaidSyncSchema.safeParse(body)
 
-    if (!plaidItemId) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "plaidItemId is required" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
+
+    plaidItemId = parsed.data.plaidItemId
 
     // Fetch the PlaidItem and verify ownership
     const plaidItem = await prisma.plaidItem.findFirst({

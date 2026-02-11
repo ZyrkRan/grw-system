@@ -66,6 +66,14 @@ function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString()
 }
 
+function formatDateSearchable(dateString: string): string {
+  return new Date(dateString).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
 function formatDuration(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return "\u2014"
   if (minutes < 60) return `${minutes}m`
@@ -174,6 +182,7 @@ export function ServiceLogTable() {
       key: "serviceDate",
       label: "Date",
       sortValue: (row) => new Date(row.serviceDate).getTime(),
+      searchValue: (row) => formatDateSearchable(row.serviceDate),
       render: (_, row) => (
         <span className="whitespace-nowrap">{formatDate(row.serviceDate)}</span>
       ),
@@ -334,7 +343,7 @@ export function ServiceLogTable() {
           data={services}
           rowKey="id"
           searchable
-          searchPlaceholder="Search by service name or customer..."
+          searchPlaceholder="Search by service name, customer, or date..."
           selectable
           renderBulkActions={(selected, clearSelection) => (
             <Button

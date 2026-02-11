@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { updateAccountSchema, accountResetSchema, formatZodError } from "@/lib/validations/finances"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -11,6 +13,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const userId = session.user!.id!
+
+  const rl = checkRateLimit(`account-write:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   const { id } = await context.params
   const accountId = parseInt(id, 10)
 
@@ -35,26 +41,25 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const { name, type, isActive, accountNumber, currentBalance } = body
+    const parsed = updateAccountSchema.safeParse(body)
 
-    const validTypes = ["CHECKING", "SAVINGS", "CREDIT"]
-    if (type && !validTypes.includes(type)) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Type must be CHECKING, SAVINGS, or CREDIT" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
 
+    const { name, type, isActive, accountNumber, currentBalance } = parsed.data
+
     const updated = await prisma.bankAccount.update({
       where: { id: accountId },
       data: {
-        ...(name !== undefined && { name: name.trim() }),
+        ...(name !== undefined && { name }),
         ...(type !== undefined && { type }),
         ...(isActive !== undefined && { isActive }),
-        ...(accountNumber !== undefined && { accountNumber: accountNumber?.trim() || null }),
-        ...(currentBalance !== undefined && {
-          currentBalance: currentBalance === null || currentBalance === "" ? null : parseFloat(currentBalance),
-        }),
+        ...(accountNumber !== undefined && { accountNumber }),
+        ...(currentBalance !== undefined && { currentBalance }),
       },
     })
 
@@ -75,6 +80,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const userId = session.user!.id!
+
+  const rl = checkRateLimit(`account-write:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   const { id } = await context.params
   const accountId = parseInt(id, 10)
 
@@ -87,10 +96,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json()
+    const parsed = accountResetSchema.safeParse(body)
 
-    if (body.action !== "reset") {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Unknown action" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
@@ -110,17 +120,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Delete all transactions and reset Plaid cursor if linked
     await prisma.$transaction(async (tx) => {
-      const deleted = await tx.bankTransaction.deleteMany({ where: { accountId } })
+      await tx.bankTransaction.deleteMany({ where: { accountId } })
 
-      // Reset Plaid cursor so next sync re-fetches all transactions
       if (account.plaidItemId) {
         await tx.plaidItem.update({
           where: { id: account.plaidItemId },
           data: { cursor: null },
         })
       }
-
-      return deleted
     })
 
     return NextResponse.json({
@@ -143,6 +150,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const userId = session.user!.id!
+
+  const rl = checkRateLimit(`account-write:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   const { id } = await context.params
   const accountId = parseInt(id, 10)
 
@@ -154,10 +165,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    // Verify ownership
     const account = await prisma.bankAccount.findFirst({
       where: { id: accountId, userId },
-      include: { _count: { select: { transactions: true } } },
     })
 
     if (!account) {
@@ -167,7 +176,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       )
     }
 
-    // Delete transactions first, then the account
     await prisma.$transaction([
       prisma.bankTransaction.deleteMany({ where: { accountId } }),
       prisma.bankAccount.delete({ where: { id: accountId } }),

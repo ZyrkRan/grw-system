@@ -81,6 +81,8 @@ export interface ColumnDef<T> {
   filterable?: boolean
   /** Custom filter value extractor — defaults to the raw cell value stringified */
   filterValue?: (row: T) => string
+  /** Custom search value extractor — used by text search. Falls back to filterValue then raw value. */
+  searchValue?: (row: T) => string
   /** Custom icon for the filter button — defaults to Filter icon */
   filterIcon?: React.ReactNode
   /** Label shown on the filter button — defaults to column label */
@@ -480,9 +482,11 @@ export function DataTable<T>({
       const q = searchQuery.toLowerCase()
       result = result.filter((row) =>
         movableColumns.some((col) => {
-          const val = col.filterValue
-            ? col.filterValue(row)
-            : getNestedValue(row, col.key)
+          const val = col.searchValue
+            ? col.searchValue(row)
+            : col.filterValue
+              ? col.filterValue(row)
+              : getNestedValue(row, col.key)
           return val != null && String(val).toLowerCase().includes(q)
         })
       )
@@ -785,17 +789,6 @@ export function DataTable<T>({
           </Button>
         )}
 
-        {/* Bulk actions */}
-        {hasSelection && renderBulkActions && (
-          <div className="flex items-center gap-2">
-            <Separator orientation="vertical" className="h-5" />
-            <span className="text-sm text-muted-foreground">
-              {selectedIds.size} selected
-            </span>
-            {renderBulkActions(selectedRows, clearSelection)}
-          </div>
-        )}
-
         {/* Columns dropdown — pinned to end */}
         <div className="ml-auto">
           <ColumnsDropdown
@@ -984,6 +977,26 @@ export function DataTable<T>({
           </div>
         </div>
       </div>
+
+      {/* Floating bulk actions bar */}
+      {renderBulkActions && (
+        <div
+          className={cn(
+            "sticky bottom-4 z-40 flex justify-center transition-all duration-200",
+            hasSelection
+              ? "translate-y-0 opacity-100"
+              : "pointer-events-none translate-y-full opacity-0"
+          )}
+        >
+          <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted px-4 py-2.5 shadow-2xl ring-1 ring-border/20">
+            <span className="text-sm font-medium text-popover-foreground">
+              {selectedIds.size} selected
+            </span>
+            <Separator orientation="vertical" className="h-5" />
+            {hasSelection && renderBulkActions(selectedRows, clearSelection)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

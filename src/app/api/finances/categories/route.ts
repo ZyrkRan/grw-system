@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { createCategorySchema, formatZodError } from "@/lib/validations/finances"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -52,34 +54,38 @@ export async function POST(request: NextRequest) {
 
   const userId = session.user!.id!
 
+  const rl = checkRateLimit(`category-create:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   try {
     const body = await request.json()
-    const { name, color, parentId, isGroup, position } = body
+    const parsed = createCategorySchema.safeParse(body)
 
-    if (!name || !color) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Name and color are required" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
 
+    const { name, color, parentId, isGroup, position } = parsed.data
+
     // Auto-generate slug from name
     const slug = name
       .toLowerCase()
-      .trim()
       .replace(/[^a-z0-9\s-]/g, "")
       .replace(/\s+/g, "-")
       .replace(/-+/g, "-")
 
     const category = await prisma.transactionCategory.create({
       data: {
-        name: name.trim(),
+        name,
         slug,
-        color: color.trim(),
+        color,
         userId,
-        parentId: parentId ? parseInt(parentId, 10) : null,
-        isGroup: isGroup || false,
-        position: position ?? 0,
+        parentId: parentId || null,
+        isGroup,
+        position,
       },
       include: {
         _count: { select: { transactions: true } },

@@ -12,9 +12,10 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { TrendingDown, ChevronDown } from "lucide-react"
+import { TrendingDown, Minus, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import {
   Select,
   SelectContent,
@@ -206,15 +207,15 @@ function SpendingPieChart({
       >
         <tspan
           x={cx}
-          y={cy - (compact ? 8 : 10)}
-          className="fill-foreground text-sm font-medium"
+          y={cy - (compact ? 6 : 10)}
+          className={cn("fill-foreground font-medium", compact ? "text-[10px]" : "text-sm")}
         >
           Total
         </tspan>
         <tspan
           x={cx}
-          y={cy + (compact ? 8 : 10)}
-          className="fill-foreground text-base font-bold"
+          y={cy + (compact ? 7 : 10)}
+          className={cn("fill-foreground font-bold", compact ? "text-xs" : "text-base")}
         >
           {formatCurrency(total)}
         </tspan>
@@ -230,8 +231,8 @@ function SpendingPieChart({
             data={chartData}
             cx="50%"
             cy="50%"
-            innerRadius={45}
-            outerRadius={75}
+            innerRadius={30}
+            outerRadius={55}
             paddingAngle={2}
             dataKey="value"
             nameKey="name"
@@ -569,9 +570,14 @@ export function CategoryAnalytics({
       <Card>
         <CardContent className="pt-6">
           {loading ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-[200px] w-full hidden md:block" />
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-3/5" />
+              </div>
+              <Skeleton className="h-3 w-28" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -582,34 +588,66 @@ export function CategoryAnalytics({
             </div>
           ) : !data || data.summary.totalCount === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <TrendingDown className="size-8 text-muted-foreground mb-2" />
+              <Minus className="size-8 text-muted-foreground mb-2" />
               <p className="text-sm text-muted-foreground">No data</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 min-h-[180px]">
               <button
                 type="button"
                 className="flex items-center justify-between w-full md:cursor-default"
                 onClick={() => setCompactOpen((o) => !o)}
               >
-                <h3 className="text-sm font-semibold">Category Spending</h3>
+                <h3 className="text-sm font-semibold">Categories</h3>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="font-medium">{formatCurrency(data.summary.totalSpend)}</span>
                   <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
                 </div>
               </button>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                {data.summary.topCategory && (
+
+              {/* Top outflow categories */}
+              {(() => {
+                const topCategories = data.outflowPieData
+                  .filter((item) => item.parentId === null)
+                  .sort((a, b) => b.value - a.value)
+                const shown = topCategories.slice(0, 3)
+                const remaining = topCategories.length - shown.length
+
+                return (
+                  <div className="space-y-1.5">
+                    {shown.map((cat) => (
+                      <div key={cat.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className="size-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          <span className="truncate">{cat.name}</span>
+                        </div>
+                        <span className="font-medium shrink-0 ml-2">{formatCurrency(cat.value)}</span>
+                      </div>
+                    ))}
+                    {remaining > 0 && (
+                      <p className="text-xs text-muted-foreground pl-[18px]">+ {remaining} more</p>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* Footer stats */}
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>{data.summary.totalCount} transactions</span>
+                {data.summary.uncategorizedCount > 0 && (
                   <>
-                    <span>Top: <span className="font-medium text-foreground">{data.summary.topCategory}</span></span>
-                    {data.summary.uncategorizedCount > 0 && <span>·</span>}
+                    <span>·</span>
+                    <span className="text-amber-600">{data.summary.uncategorizedCount} uncategorized</span>
                   </>
                 )}
-                {data.summary.uncategorizedCount > 0 && (
-                  <span className="text-amber-600">{data.summary.uncategorizedCount} uncategorized</span>
-                )}
               </div>
-              <div className={cn("grid grid-cols-2 gap-3 h-[200px]", compactOpen ? "grid" : "hidden md:grid")}>
+
+              <div className={cn(compactOpen ? "block" : "hidden md:block")}>
+                <Separator className="mb-3" />
+                <div className="grid grid-cols-2 gap-3 h-[150px]">
                 {/* Inflow Pie */}
                 <div className="flex flex-col">
                   <div className="flex items-center justify-between mb-1">
@@ -673,6 +711,7 @@ export function CategoryAnalytics({
                       </div>
                     )}
                   </div>
+                </div>
                 </div>
               </div>
             </div>

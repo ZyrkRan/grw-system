@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TransactionType } from "@/generated/prisma"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
+import { importRequestSchema, formatZodError } from "@/lib/validations/finances"
 
 type ImportTransaction = {
   date: string
@@ -27,24 +29,22 @@ export async function POST(request: NextRequest) {
 
   const userId = session.user!.id!
 
+  // Rate limit CSV imports
+  const rl = checkRateLimit(`import:${userId}`, rateLimits.import)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   try {
     const body = await request.json()
-    const { accountId, transactions } = body
+    const parsed = importRequestSchema.safeParse(body)
 
-    // Validate request body
-    if (!accountId || typeof accountId !== "number") {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Valid accountId is required" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
 
-    if (!Array.isArray(transactions)) {
-      return NextResponse.json(
-        { success: false, error: "transactions must be an array" },
-        { status: 400 }
-      )
-    }
+    const { accountId, transactions } = parsed.data
 
     // Verify account ownership
     const account = await prisma.bankAccount.findFirst({

@@ -64,6 +64,13 @@ interface Transaction {
   serviceLog: ServiceLogRef | null
 }
 
+interface PaginationInfo {
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
 function formatCurrency(value: number | string | null | undefined): string {
   if (value === null || value === undefined) return "$0.00"
   return new Intl.NumberFormat("en-US", {
@@ -88,6 +95,7 @@ interface TransactionsTableProps {
 
 export function TransactionsTable({ accountId, timeframe, refreshKey }: TransactionsTableProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [categories, setCategories] = useState<CategoryRef[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -142,12 +150,18 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
         params.set("dateFrom", timeframe.dateFrom)
         params.set("dateTo", timeframe.dateTo)
       }
+      // Use server-side pagination with a large page size so
+      // client-side DataTable pagination still works as before
+      params.set("pageSize", "250")
       const url = `/api/finances/transactions?${params}`
       const res = await fetch(url)
       const result = await res.json()
 
       if (result.success) {
         setTransactions(result.data)
+        if (result.pagination) {
+          setPagination(result.pagination)
+        }
       }
     } catch (error) {
       console.error("Failed to fetch transactions:", error)
@@ -182,22 +196,33 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
     setDeleteError("")
 
     try {
-      const results = await Promise.all(
-        targets.map((txn) =>
-          fetch(`/api/finances/transactions/${txn.id}`, { method: "DELETE" }).then((r) => r.json())
-        )
-      )
-
-      const failed = results.filter((r) => !r.success)
-      if (failed.length > 0) {
-        setDeleteError(`Failed to delete ${failed.length} transaction(s).`)
+      if (targets.length === 1) {
+        // Single delete uses the existing endpoint
+        const res = await fetch(`/api/finances/transactions/${targets[0].id}`, { method: "DELETE" })
+        const result = await res.json()
+        if (!result.success) {
+          setDeleteError(result.error || "Failed to delete transaction.")
+          return
+        }
       } else {
-        setDeleteTarget(null)
-        setBulkDeleteTargets([])
-        bulkClearRef.current?.()
-        bulkClearRef.current = null
-        fetchTransactions()
+        // Bulk delete uses the batch endpoint
+        const res = await fetch("/api/finances/transactions/batch", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: targets.map((t) => t.id) }),
+        })
+        const result = await res.json()
+        if (!result.success) {
+          setDeleteError(result.error || "Failed to delete transactions.")
+          return
+        }
       }
+
+      setDeleteTarget(null)
+      setBulkDeleteTargets([])
+      bulkClearRef.current?.()
+      bulkClearRef.current = null
+      fetchTransactions()
     } catch {
       setDeleteError("Failed to delete. Please try again.")
     } finally {
@@ -249,37 +274,34 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
   ) {
     setIsBulkAssigning(true)
     try {
-      const results = await Promise.all(
-        selected.map((txn) =>
-          fetch(`/api/finances/transactions/${txn.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ categoryId }),
-          }).then((r) => r.json())
+      // Use batch endpoint instead of N individual requests
+      const res = await fetch("/api/finances/transactions/batch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: selected.map((t) => t.id),
+          categoryId,
+        }),
+      })
+      const result = await res.json()
+
+      if (result.success) {
+        // Update transactions in local state
+        const selectedIds = new Set(selected.map((t) => t.id))
+        setTransactions((prev) =>
+          prev.map((txn) =>
+            selectedIds.has(txn.id)
+              ? {
+                  ...txn,
+                  category: categoryId
+                    ? categories.find((c) => c.id === categoryId) || null
+                    : null,
+                }
+              : txn
+          )
         )
-      )
-
-      const successIds = new Set(
-        results
-          .map((r, idx) => (r.success ? selected[idx].id : null))
-          .filter((id): id is number => id !== null)
-      )
-
-      // Update transactions in local state
-      setTransactions((prev) =>
-        prev.map((txn) =>
-          successIds.has(txn.id)
-            ? {
-                ...txn,
-                category: categoryId
-                  ? categories.find((c) => c.id === categoryId) || null
-                  : null,
-              }
-            : txn
-        )
-      )
-
-      clearSelection()
+        clearSelection()
+      }
     } catch {
       console.error("Failed to bulk assign category")
     } finally {
@@ -299,6 +321,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       key: "date",
       label: "Date",
       sortValue: (row) => new Date(row.date).getTime(),
+      searchValue: (row) => formatDate(row.date),
       render: (_, row) => (
         <span className="whitespace-nowrap">{formatDate(row.date)}</span>
       ),
@@ -468,7 +491,13 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">
-          Transactions {uncategorizedCount > 0 && `(${uncategorizedCount} uncategorized)`}
+          Transactions
+          {pagination && ` (${pagination.total})`}
+          {uncategorizedCount > 0 && (
+            <span className="text-muted-foreground font-normal text-base ml-1">
+              {uncategorizedCount} uncategorized
+            </span>
+          )}
         </h2>
         <Button onClick={handleAddTransaction}>
           <Plus className="mr-2 size-4" />
@@ -492,7 +521,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
               : undefined
           }
           searchable
-          searchPlaceholder="Search by description or merchant..."
+          searchPlaceholder="Search by description, merchant, or date..."
           selectable
           renderCard={(txn, { isSelected, onToggle }) => (
             <div

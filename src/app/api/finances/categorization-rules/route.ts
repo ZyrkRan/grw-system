@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { createRuleSchema, formatZodError } from "@/lib/validations/finances"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -39,33 +41,26 @@ export async function POST(request: NextRequest) {
 
   const userId = session.user!.id!
 
+  const rl = checkRateLimit(`rule-create:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   try {
     const body = await request.json()
-    const { pattern, categoryId, applyToExisting } = body
+    const parsed = createRuleSchema.safeParse(body)
 
-    if (!pattern || !categoryId) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Pattern and categoryId are required" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
 
-    // Validate that the pattern is a valid regex
-    try {
-      new RegExp(pattern, "i")
-    } catch {
-      return NextResponse.json(
-        { success: false, error: "Invalid regex pattern" },
-        { status: 400 }
-      )
-    }
-
-    const catId = parseInt(categoryId, 10)
+    const { pattern, categoryId, applyToExisting } = parsed.data
 
     // Verify category belongs to user or is a default category
     const category = await prisma.transactionCategory.findFirst({
       where: {
-        id: catId,
+        id: categoryId,
         OR: [{ userId }, { userId: null, isDefault: true }],
       },
     })
@@ -79,8 +74,8 @@ export async function POST(request: NextRequest) {
 
     const rule = await prisma.categorizationRule.create({
       data: {
-        pattern: pattern.trim(),
-        categoryId: catId,
+        pattern,
+        categoryId,
         userId,
       },
       include: {
@@ -112,7 +107,7 @@ export async function POST(request: NextRequest) {
       if (matchingIds.length > 0) {
         const result = await prisma.bankTransaction.updateMany({
           where: { id: { in: matchingIds } },
-          data: { categoryId: catId },
+          data: { categoryId },
         })
         appliedCount = result.count
       }

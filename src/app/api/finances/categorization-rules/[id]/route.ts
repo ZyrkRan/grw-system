@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { updateRuleSchema, formatZodError } from "@/lib/validations/finances"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -11,6 +13,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const userId = session.user!.id!
+
+  const rl = checkRateLimit(`rule-write:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   const { id } = await context.params
   const ruleId = parseInt(id, 10)
 
@@ -22,7 +28,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    // Verify ownership
     const rule = await prisma.categorizationRule.findFirst({
       where: { id: ruleId, userId },
     })
@@ -35,26 +40,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const { pattern, categoryId } = body
+    const parsed = updateRuleSchema.safeParse(body)
 
-    // Validate pattern if provided
-    if (pattern) {
-      try {
-        new RegExp(pattern, "i")
-      } catch {
-        return NextResponse.json(
-          { success: false, error: "Invalid regex pattern" },
-          { status: 400 }
-        )
-      }
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: formatZodError(parsed.error) },
+        { status: 400 }
+      )
     }
+
+    const { pattern, categoryId } = parsed.data
 
     // Verify category if changing
     if (categoryId !== undefined) {
-      const catId = parseInt(categoryId, 10)
       const category = await prisma.transactionCategory.findFirst({
         where: {
-          id: catId,
+          id: categoryId,
           OR: [{ userId }, { userId: null, isDefault: true }],
         },
       })
@@ -70,8 +71,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const updated = await prisma.categorizationRule.update({
       where: { id: ruleId },
       data: {
-        ...(pattern !== undefined && { pattern: pattern.trim() }),
-        ...(categoryId !== undefined && { categoryId: parseInt(categoryId, 10) }),
+        ...(pattern !== undefined && { pattern }),
+        ...(categoryId !== undefined && { categoryId }),
       },
       include: {
         category: {
@@ -97,6 +98,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const userId = session.user!.id!
+
+  const rl = checkRateLimit(`rule-write:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   const { id } = await context.params
   const ruleId = parseInt(id, 10)
 
@@ -108,7 +113,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    // Verify ownership
     const rule = await prisma.categorizationRule.findFirst({
       where: { id: ruleId, userId },
     })

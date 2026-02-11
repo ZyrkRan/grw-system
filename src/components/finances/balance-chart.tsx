@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 import {
   ChartContainer,
   ChartTooltip,
@@ -391,7 +392,17 @@ export function BalanceChart({
           {loading ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-[200px] w-full hidden md:block" />
+              <div className="flex items-end justify-between gap-3">
+                <div className="space-y-1">
+                  <Skeleton className="h-6 w-24" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-[50px] w-[100px]" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Skeleton className="h-[52px] rounded-lg" />
+                <Skeleton className="h-[52px] rounded-lg" />
+              </div>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -406,28 +417,55 @@ export function BalanceChart({
               <p className="text-sm text-muted-foreground">No data</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 min-h-[180px]">
               <button
                 type="button"
                 className="flex items-center justify-between w-full md:cursor-default"
                 onClick={() => setCompactOpen((o) => !o)}
               >
-                <h3 className="text-sm font-semibold">Balance History</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium">
-                    {formatCurrency(data.summary.endBalance)}
-                  </span>
-                  <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
-                </div>
+                <h3 className="text-sm font-semibold">Balance</h3>
+                <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
               </button>
-              <div className="flex items-center gap-1 text-xs">
-                <span className={cn("font-medium", netColor)}>
-                  {data.summary.netChange >= 0 ? "+" : ""}{formatCurrency(data.summary.netChange)}
-                </span>
-                <span className="text-muted-foreground">from</span>
-                <span className="text-muted-foreground">{formatCurrency(data.summary.startBalance)} start</span>
+
+              {/* Hero balance + sparkline */}
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-lg font-bold">{formatCurrency(data.summary.endBalance)}</p>
+                  <p className="text-xs text-muted-foreground">Current Balance</p>
+                </div>
+                <ChartContainer config={balanceChartConfig} className="h-[50px] w-[100px] shrink-0">
+                  <LineChart data={data.points}>
+                    <Line
+                      type="monotone"
+                      dataKey="balance"
+                      stroke="var(--color-balance)"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ChartContainer>
               </div>
+
+              {/* Start balance + Net change mini grid */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-muted/50 p-2.5">
+                  <span className="text-xs text-muted-foreground">Start</span>
+                  <p className="text-sm font-semibold">{formatCurrency(data.summary.startBalance)}</p>
+                </div>
+                <div className={cn("rounded-lg p-2.5", data.summary.netChange >= 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-red-50 dark:bg-red-950/30")}>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">Change</span>
+                    {netIcon}
+                  </div>
+                  <p className={cn("text-sm font-semibold", netColor)}>
+                    {data.summary.netChange >= 0 ? "+" : ""}{formatCurrency(data.summary.netChange)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Full chart — toggleable on mobile, always visible on desktop */}
               <div className={cn(compactOpen ? "block" : "hidden md:block")}>
+                <Separator className="mb-3" />
                 <ChartContainer config={balanceChartConfig} className="h-[200px] w-full">
                   <LineChart accessibilityLayer data={data.points}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />

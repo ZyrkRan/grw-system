@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@/generated/prisma"
+import { updateTransactionSchema, formatZodError } from "@/lib/validations/finances"
+import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -12,6 +14,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const userId = session.user!.id!
+
+  const rl = checkRateLimit(`txn-write:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   const { id } = await context.params
   const txnId = parseInt(id, 10)
 
@@ -36,15 +42,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const { notes, categoryId, serviceLogId, description, amount, date, type } = body
+    const parsed = updateTransactionSchema.safeParse(body)
 
-    const validTypes = ["INFLOW", "OUTFLOW"]
-    if (type && !validTypes.includes(type)) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Type must be INFLOW or OUTFLOW" },
+        { success: false, error: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
+
+    const { notes, categoryId, serviceLogId, description, amount, date, type } = parsed.data
 
     // If date changes, recalculate statementMonth/statementYear
     let statementMonth: number | undefined
@@ -58,11 +65,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const updated = await prisma.bankTransaction.update({
       where: { id: txnId },
       data: {
-        ...(notes !== undefined && { notes: notes?.trim() || null }),
-        ...(categoryId !== undefined && { categoryId: categoryId ? parseInt(categoryId, 10) : null }),
-        ...(serviceLogId !== undefined && { serviceLogId: serviceLogId ? parseInt(serviceLogId, 10) : null }),
-        ...(description !== undefined && { description: description.trim() }),
-        ...(amount !== undefined && { amount: parseFloat(amount) }),
+        ...(notes !== undefined && { notes }),
+        ...(categoryId !== undefined && { categoryId }),
+        ...(serviceLogId !== undefined && { serviceLogId }),
+        ...(description !== undefined && { description }),
+        ...(amount !== undefined && { amount }),
         ...(date !== undefined && { date: new Date(date) }),
         ...(type !== undefined && { type }),
         ...(statementMonth !== undefined && { statementMonth }),
@@ -92,6 +99,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const userId = session.user!.id!
+
+  const rl = checkRateLimit(`txn-write:${userId}`, rateLimits.write)
+  if (!rl.success) return rateLimitResponse(rl.resetAt)
+
   const { id } = await context.params
   const txnId = parseInt(id, 10)
 
@@ -132,7 +143,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
             transactionData: transaction.rawPlaidData ?? Prisma.DbNull,
           },
           update: {
-            deletedAt: new Date(), // Update timestamp if re-deleted
+            deletedAt: new Date(),
           },
         })
       }
