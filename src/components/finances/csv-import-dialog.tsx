@@ -142,8 +142,23 @@ export function CSVImportDialog({
       const { headers: parsedHeaders, rows: parsedRows } = parseCSV(text)
       setHeaders(parsedHeaders)
       setRows(parsedRows)
-      setStep("map")
-      autoDetectColumns(parsedHeaders)
+
+      const detected = autoDetectColumns(parsedHeaders)
+      setMapping(detected)
+
+      // If required fields are detected, skip straight to preview
+      const hasRequired =
+        detected.date !== undefined &&
+        detected.description !== undefined &&
+        (detected.amount !== undefined || (detected.debit !== undefined && detected.credit !== undefined))
+
+      if (hasRequired) {
+        const validated = validateAndParseRows(detected, parsedRows)
+        setParsedRows(validated)
+        setStep("preview")
+      } else {
+        setStep("map")
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to parse CSV file"
@@ -152,49 +167,59 @@ export function CSVImportDialog({
     }
   }
 
-  function autoDetectColumns(headers: string[]) {
+  function autoDetectColumns(headers: string[]): ColumnMapping {
     const detected: ColumnMapping = {}
+    const lower = headers.map((h) => h.toLowerCase().trim())
 
-    headers.forEach((header, index) => {
-      const lower = header.toLowerCase()
+    // Score-based matching — each field tries all headers, picks best match
+    // Priority: exact-ish match first, then partial includes
+    const datePatterns = [/^date$/, /^transaction.?date$/, /^posted.?date$/, /^post.?date$/, /^trans.?date$/, /date/, /posted/]
+    const descPatterns = [/^description$/, /^memo$/, /^transaction.?description$/, /description/, /memo/, /detail/, /narrative/, /particulars/]
+    const amountPatterns = [/^amount$/, /^transaction.?amount$/, /^net.?amount$/, /amount/]
+    const debitPatterns = [/^debit$/, /^debit.?amount$/, /^withdrawal$/, /debit/, /withdrawal/]
+    const creditPatterns = [/^credit$/, /^credit.?amount$/, /^deposit$/, /credit/, /deposit/]
+    const typePatterns = [/^type$/, /^transaction.?type$/, /^trans.?type$/, /type/]
+    const merchantPatterns = [/^merchant$/, /^merchant.?name$/, /^payee$/, /^vendor$/, /merchant/, /payee/, /vendor/]
 
-      if (
-        lower.includes("date") ||
-        lower.includes("posted") ||
-        lower.includes("transaction date")
-      ) {
-        detected.date = index
-      } else if (
-        lower.includes("description") ||
-        lower.includes("memo") ||
-        lower.includes("detail")
-      ) {
-        detected.description = index
-      } else if (
-        lower.includes("amount") &&
-        !lower.includes("credit") &&
-        !lower.includes("debit")
-      ) {
-        detected.amount = index
-      } else if (lower.includes("debit")) {
-        detected.debit = index
-      } else if (lower.includes("credit")) {
-        detected.credit = index
-      } else if (
-        lower.includes("type") ||
-        lower.includes("transaction type")
-      ) {
-        detected.type = index
-      } else if (
-        lower.includes("merchant") ||
-        lower.includes("name") ||
-        lower.includes("payee")
-      ) {
-        detected.merchantName = index
+    function findBest(patterns: RegExp[], exclude?: Set<number>): number | undefined {
+      for (const pattern of patterns) {
+        for (let i = 0; i < lower.length; i++) {
+          if (exclude?.has(i)) continue
+          if (pattern.test(lower[i])) return i
+        }
       }
-    })
+      return undefined
+    }
 
-    setMapping(detected)
+    const used = new Set<number>()
+
+    detected.date = findBest(datePatterns, used)
+    if (detected.date !== undefined) used.add(detected.date)
+
+    detected.description = findBest(descPatterns, used)
+    if (detected.description !== undefined) used.add(detected.description)
+
+    // Try single amount first, then debit/credit
+    const amountIdx = findBest(amountPatterns, used)
+    const debitIdx = findBest(debitPatterns, used)
+    const creditIdx = findBest(creditPatterns, used)
+
+    if (amountIdx !== undefined) {
+      detected.amount = amountIdx
+      used.add(amountIdx)
+    } else if (debitIdx !== undefined && creditIdx !== undefined) {
+      detected.debit = debitIdx
+      detected.credit = creditIdx
+      used.add(debitIdx)
+      used.add(creditIdx)
+    }
+
+    detected.type = findBest(typePatterns, used)
+    if (detected.type !== undefined) used.add(detected.type)
+
+    detected.merchantName = findBest(merchantPatterns, used)
+
+    return detected
   }
 
   function parseDate(dateStr: string): Date | null {
@@ -250,13 +275,16 @@ export function CSVImportDialog({
     }
   }
 
-  function validateAndParseRows(): ParsedRow[] {
-    return rows.map((row) => {
+  function validateAndParseRows(m?: ColumnMapping, r?: string[][]): ParsedRow[] {
+    const effectiveMapping = m ?? mapping
+    const effectiveRows = r ?? rows
+
+    return effectiveRows.map((row) => {
       const parsed: ParsedRow = { raw: row, errors: [] }
 
       // Date
-      if (mapping.date !== undefined) {
-        const dateStr = row[mapping.date]
+      if (effectiveMapping.date !== undefined) {
+        const dateStr = row[effectiveMapping.date]
         const date = parseDate(dateStr)
         if (!date) {
           parsed.errors.push("Invalid date format")
@@ -270,8 +298,8 @@ export function CSVImportDialog({
       }
 
       // Description
-      if (mapping.description !== undefined) {
-        const desc = row[mapping.description]?.trim()
+      if (effectiveMapping.description !== undefined) {
+        const desc = row[effectiveMapping.description]?.trim()
         if (!desc) {
           parsed.errors.push("Description cannot be empty")
         } else {
@@ -282,9 +310,9 @@ export function CSVImportDialog({
       }
 
       // Amount and Type
-      const amountStr = mapping.amount !== undefined ? row[mapping.amount] : ""
-      const debitStr = mapping.debit !== undefined ? row[mapping.debit] : ""
-      const creditStr = mapping.credit !== undefined ? row[mapping.credit] : ""
+      const amountStr = effectiveMapping.amount !== undefined ? row[effectiveMapping.amount] : ""
+      const debitStr = effectiveMapping.debit !== undefined ? row[effectiveMapping.debit] : ""
+      const creditStr = effectiveMapping.credit !== undefined ? row[effectiveMapping.credit] : ""
 
       const amountResult = parseAmount(amountStr, debitStr, creditStr)
 
@@ -294,8 +322,8 @@ export function CSVImportDialog({
         parsed.amount = amountResult.amount
 
         // Check if there's an explicit type column
-        if (mapping.type !== undefined) {
-          const typeStr = row[mapping.type]?.toUpperCase()
+        if (effectiveMapping.type !== undefined) {
+          const typeStr = row[effectiveMapping.type]?.toUpperCase()
           if (typeStr === "INFLOW" || typeStr === "CREDIT" || typeStr === "DEPOSIT") {
             parsed.type = "INFLOW"
           } else if (typeStr === "OUTFLOW" || typeStr === "DEBIT" || typeStr === "WITHDRAWAL") {
@@ -310,8 +338,8 @@ export function CSVImportDialog({
       }
 
       // Merchant Name (optional)
-      if (mapping.merchantName !== undefined) {
-        const merchant = row[mapping.merchantName]?.trim()
+      if (effectiveMapping.merchantName !== undefined) {
+        const merchant = row[effectiveMapping.merchantName]?.trim()
         parsed.merchantName = merchant || undefined
       }
 
@@ -399,13 +427,13 @@ export function CSVImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Import Transactions from CSV</DialogTitle>
           <DialogDescription>
             {step === "upload" && "Upload a CSV file containing your transactions"}
             {step === "map" && "Map CSV columns to transaction fields"}
-            {step === "preview" && "Review and import transactions"}
+            {step === "preview" && "Columns auto-detected — review and import, or go back to adjust"}
           </DialogDescription>
         </DialogHeader>
 
@@ -495,7 +523,7 @@ export function CSVImportDialog({
 
         {/* Step 2: Map Columns */}
         {step === "map" && (
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto">
             <div className="text-sm text-muted-foreground">
               Map your CSV columns to transaction fields. Required fields are marked with *.
             </div>
@@ -551,7 +579,7 @@ export function CSVImportDialog({
                     onValueChange={(val) =>
                       setMapping({
                         ...mapping,
-                        amount: val ? parseInt(val) : undefined,
+                        amount: val && val !== "__none__" ? parseInt(val) : undefined,
                         debit: undefined,
                         credit: undefined,
                       })
@@ -561,7 +589,7 @@ export function CSVImportDialog({
                       <SelectValue placeholder="Select amount column" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="__none__">None</SelectItem>
                       {headers.map((header, idx) => (
                         <SelectItem key={idx} value={idx.toString()}>
                           {header}
@@ -578,7 +606,7 @@ export function CSVImportDialog({
                       onValueChange={(val) =>
                         setMapping({
                           ...mapping,
-                          debit: val ? parseInt(val) : undefined,
+                          debit: val && val !== "__none__" ? parseInt(val) : undefined,
                           amount: undefined,
                         })
                       }
@@ -588,7 +616,7 @@ export function CSVImportDialog({
                         <SelectValue placeholder="Debit" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="__none__">None</SelectItem>
                         {headers.map((header, idx) => (
                           <SelectItem key={idx} value={idx.toString()}>
                             {header}
@@ -601,7 +629,7 @@ export function CSVImportDialog({
                       onValueChange={(val) =>
                         setMapping({
                           ...mapping,
-                          credit: val ? parseInt(val) : undefined,
+                          credit: val && val !== "__none__" ? parseInt(val) : undefined,
                           amount: undefined,
                         })
                       }
@@ -611,7 +639,7 @@ export function CSVImportDialog({
                         <SelectValue placeholder="Credit" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="__none__">None</SelectItem>
                         {headers.map((header, idx) => (
                           <SelectItem key={idx} value={idx.toString()}>
                             {header}
@@ -630,7 +658,7 @@ export function CSVImportDialog({
                   onValueChange={(val) =>
                     setMapping({
                       ...mapping,
-                      type: val ? parseInt(val) : undefined,
+                      type: val && val !== "__none__" ? parseInt(val) : undefined,
                     })
                   }
                 >
@@ -638,7 +666,7 @@ export function CSVImportDialog({
                     <SelectValue placeholder="Auto-detect from amount" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Auto-detect</SelectItem>
+                    <SelectItem value="__none__">Auto-detect</SelectItem>
                     {headers.map((header, idx) => (
                       <SelectItem key={idx} value={idx.toString()}>
                         {header}
@@ -655,7 +683,7 @@ export function CSVImportDialog({
                   onValueChange={(val) =>
                     setMapping({
                       ...mapping,
-                      merchantName: val ? parseInt(val) : undefined,
+                      merchantName: val && val !== "__none__" ? parseInt(val) : undefined,
                     })
                   }
                 >
@@ -663,7 +691,7 @@ export function CSVImportDialog({
                     <SelectValue placeholder="Optional" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="__none__">None</SelectItem>
                     {headers.map((header, idx) => (
                       <SelectItem key={idx} value={idx.toString()}>
                         {header}
@@ -678,12 +706,18 @@ export function CSVImportDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setStep("upload")}
+                onClick={() => {
+                  if (parsedRows.length > 0) {
+                    setStep("preview")
+                  } else {
+                    setStep("upload")
+                  }
+                }}
               >
-                Back
+                {parsedRows.length > 0 ? "Back to Preview" : "Back"}
               </Button>
               <Button type="button" onClick={handlePreview}>
-                Preview Import
+                {parsedRows.length > 0 ? "Update Preview" : "Preview Import"}
               </Button>
             </div>
           </div>
@@ -691,8 +725,8 @@ export function CSVImportDialog({
 
         {/* Step 3: Preview */}
         {step === "preview" && (
-          <div className="space-y-4">
-            <div className="rounded-md bg-muted px-3 py-2 text-sm">
+          <div className="flex flex-col gap-4 min-h-0">
+            <div className="rounded-md bg-muted px-3 py-2 text-sm shrink-0">
               <div className="flex items-center justify-between">
                 <span className="font-medium">
                   {validCount} valid transaction(s)
@@ -703,7 +737,7 @@ export function CSVImportDialog({
               </div>
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-auto min-h-0">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -774,13 +808,13 @@ export function CSVImportDialog({
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-4">
+            <div className="flex justify-end gap-2 pt-2 shrink-0">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setStep("map")}
               >
-                Back
+                Adjust Mapping
               </Button>
               <Button
                 type="button"

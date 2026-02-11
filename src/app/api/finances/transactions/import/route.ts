@@ -118,48 +118,49 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for duplicates
-    const transactionsToInsert: Array<{
-      date: Date
-      description: string
-      amount: number
-      type: TransactionType
-      accountId: number
-      userId: string
-      statementMonth: number
-      statementYear: number
-      isPending: boolean
-      merchantName: string | null
-      plaidStatus: null
-      plaidTransactionId: null
-    }> = []
-    let skippedCount = 0
+    // Batch duplicate detection — single query instead of N queries
+    // Find the date range across all transactions to import
+    const dates = validTransactions.map((txn) => new Date(txn.date))
+    const minDate = new Date(Math.min(...dates.map((d) => d.getTime())))
+    const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())))
+    const rangeStart = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate(), 0, 0, 0)
+    const rangeEnd = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate(), 23, 59, 59, 999)
 
-    for (const txn of validTransactions) {
-      const date = new Date(txn.date)
-      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0)
-      const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+    // Fetch all existing transactions in the date range for this account (1 query)
+    const existing = await prisma.bankTransaction.findMany({
+      where: {
+        accountId,
+        date: { gte: rangeStart, lte: rangeEnd },
+      },
+      select: { date: true, description: true, amount: true },
+    })
 
-      // Check for duplicate: same accountId, date (within same day), description (case-insensitive), and amount
-      const existingTransaction = await prisma.bankTransaction.findFirst({
-        where: {
-          accountId,
-          date: {
-            gte: startOfDay,
-            lte: endOfDay,
-          },
-          description: {
-            equals: txn.description,
-            mode: "insensitive",
-          },
-          amount: txn.amount,
-        },
+    // Build a Set of composite keys for O(1) duplicate lookup
+    // Key format: "YYYY-MM-DD|description_lowercase|amount"
+    const existingKeys = new Set(
+      existing.map((txn) => {
+        const d = new Date(txn.date)
+        const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+        return `${dateKey}|${txn.description.toLowerCase()}|${Number(txn.amount)}`
       })
+    )
 
-      if (existingTransaction) {
-        skippedCount++
-      } else {
-        transactionsToInsert.push({
+    let skippedCount = 0
+    const transactionsToInsert = validTransactions
+      .map((txn) => {
+        const date = new Date(txn.date)
+        const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+        const key = `${dateKey}|${txn.description.toLowerCase()}|${txn.amount}`
+
+        if (existingKeys.has(key)) {
+          skippedCount++
+          return null
+        }
+
+        // Also add to set so we don't insert duplicates within the CSV itself
+        existingKeys.add(key)
+
+        return {
           date,
           description: txn.description,
           amount: txn.amount,
@@ -170,19 +171,19 @@ export async function POST(request: NextRequest) {
           statementYear: date.getFullYear(),
           isPending: false,
           merchantName: txn.merchantName || null,
-          plaidStatus: null,
-          plaidTransactionId: null,
-        })
-      }
-    }
+          plaidStatus: null as null,
+          plaidTransactionId: null as null,
+        }
+      })
+      .filter((txn): txn is NonNullable<typeof txn> => txn !== null)
 
-    // Bulk insert valid transactions
+    // Bulk insert
     let importedCount = 0
     if (transactionsToInsert.length > 0) {
-      await prisma.bankTransaction.createMany({
+      const result = await prisma.bankTransaction.createMany({
         data: transactionsToInsert,
       })
-      importedCount = transactionsToInsert.length
+      importedCount = result.count
     }
 
     return NextResponse.json({
