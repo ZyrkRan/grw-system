@@ -47,7 +47,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch all pages of transaction updates
+    // Fetch transaction updates and balances in parallel
+    // Balance fetch is independent of transactions — no need to wait
+    const balancePromise = plaidClient.accountsBalanceGet({
+      access_token: plaidItem.accessToken,
+    })
+
     let cursor = plaidItem.cursor || undefined
     let added: Transaction[] = []
     let modified: Transaction[] = []
@@ -67,22 +72,27 @@ export async function POST(request: NextRequest) {
       cursor = response.data.next_cursor
     }
 
-    // Fetch fresh balances from Plaid
-    const balanceResponse = await plaidClient.accountsBalanceGet({
-      access_token: plaidItem.accessToken,
-    })
+    const balanceResponse = await balancePromise
     const plaidBalances = new Map<string, number | null>()
     for (const acct of balanceResponse.data.accounts) {
       plaidBalances.set(acct.account_id, acct.balances.current)
     }
 
+    console.log(`[Sync] Plaid returned: ${added.length} added, ${modified.length} modified, ${removed.length} removed (cursor: ${cursor ? "present" : "initial"})`)
+
     // Process in a database transaction
     let addedCount = 0
     let modifiedCount = 0
     let removedCount = 0
+    let addedPlaidIds: string[] = []
 
     await prisma.$transaction(async (tx) => {
       // Process added transactions — filter out user-deleted ones
+      const unmappedCount = added.filter((txn) => !accountMap.has(txn.account_id)).length
+      if (unmappedCount > 0) {
+        console.log(`[Sync] ${unmappedCount} transactions skipped — no matching account mapping`)
+      }
+
       const addedData = added
         .filter((txn) => accountMap.has(txn.account_id))
         .map((txn) => {
@@ -132,17 +142,15 @@ export async function POST(request: NextRequest) {
         )
 
         if (transactionsToInsert.length > 0) {
-          await tx.bankTransaction.createMany({ data: transactionsToInsert })
-          addedCount = transactionsToInsert.length
+          const inserted = await tx.bankTransaction.createMany({
+            data: transactionsToInsert,
+            skipDuplicates: true,
+          })
+          addedCount = inserted.count
+          addedPlaidIds = transactionsToInsert.map((t) => t.plaidTransactionId)
         }
 
-        // Log filtered count for visibility
-        const filteredCount = addedData.length - transactionsToInsert.length
-        if (filteredCount > 0) {
-          console.log(
-            `[Sync] Filtered out ${filteredCount} user-deleted transactions for user ${userId}`
-          )
-        }
+        console.log(`[Sync] Prepared ${addedData.length} → filtered ${addedData.length - transactionsToInsert.length} deleted → inserted ${addedCount} (${transactionsToInsert.length - addedCount} skipped as duplicates)`)
       }
 
       // Process modified transactions — skip if user deleted
@@ -230,23 +238,24 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Update currentBalance for each account from Plaid balances
-      for (const ba of plaidItem.bankAccounts) {
-        if (ba.plaidAccountId && plaidBalances.has(ba.plaidAccountId)) {
-          const rawBal = plaidBalances.get(ba.plaidAccountId) ?? null
+      // Update currentBalance for each account from Plaid balances (parallel)
+      const balanceUpdates = plaidItem.bankAccounts
+        .filter((ba) => ba.plaidAccountId && plaidBalances.has(ba.plaidAccountId))
+        .map((ba) => {
+          const rawBal = plaidBalances.get(ba.plaidAccountId!) ?? null
           const currentBalance =
             rawBal !== null && ba.type === "CREDIT" ? -Math.abs(rawBal) : rawBal
-          await tx.bankAccount.update({
+          return tx.bankAccount.update({
             where: { id: ba.id },
             data: { currentBalance },
           })
-        }
-      }
+        })
+      await Promise.all(balanceUpdates)
     }, { timeout: 15000 })
 
     // Apply categorization rules to newly added uncategorized transactions
     if (addedCount > 0) {
-      await applyCategorizationRules(userId)
+      await applyCategorizationRules(userId, addedPlaidIds)
     }
 
     return NextResponse.json({
@@ -304,30 +313,52 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function applyCategorizationRules(userId: string) {
-  const rules = await prisma.categorizationRule.findMany({
-    where: { userId },
-  })
+async function applyCategorizationRules(userId: string, plaidTransactionIds: string[]) {
+  if (plaidTransactionIds.length === 0) return
 
-  if (rules.length === 0) return
+  const [rules, transactions] = await Promise.all([
+    prisma.categorizationRule.findMany({ where: { userId } }),
+    prisma.bankTransaction.findMany({
+      where: { plaidTransactionId: { in: plaidTransactionIds }, categoryId: null },
+      select: { id: true, description: true, merchantName: true },
+    }),
+  ])
 
-  const uncategorized = await prisma.bankTransaction.findMany({
-    where: { userId, categoryId: null },
-  })
+  if (rules.length === 0 || transactions.length === 0) return
 
-  for (const txn of uncategorized) {
-    for (const rule of rules) {
-      const regex = new RegExp(rule.pattern, "i")
+  // Pre-compile regexes once
+  const compiledRules = rules.map((rule) => ({
+    regex: new RegExp(rule.pattern, "i"),
+    categoryId: rule.categoryId,
+  }))
+
+  // Group transaction IDs by matching categoryId for batch updates
+  const categoryBatches = new Map<number, number[]>()
+
+  for (const txn of transactions) {
+    for (const rule of compiledRules) {
       if (
-        regex.test(txn.description) ||
-        (txn.merchantName && regex.test(txn.merchantName))
+        rule.regex.test(txn.description) ||
+        (txn.merchantName && rule.regex.test(txn.merchantName))
       ) {
-        await prisma.bankTransaction.update({
-          where: { id: txn.id },
-          data: { categoryId: rule.categoryId },
-        })
+        const batch = categoryBatches.get(rule.categoryId)
+        if (batch) {
+          batch.push(txn.id)
+        } else {
+          categoryBatches.set(rule.categoryId, [txn.id])
+        }
         break // first matching rule wins
       }
     }
   }
+
+  // Batch update — one query per category instead of one per transaction
+  await Promise.all(
+    Array.from(categoryBatches.entries()).map(([categoryId, ids]) =>
+      prisma.bankTransaction.updateMany({
+        where: { id: { in: ids } },
+        data: { categoryId },
+      })
+    )
+  )
 }

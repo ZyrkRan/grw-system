@@ -119,10 +119,11 @@ export async function GET(request: NextRequest) {
   let endDate: Date
 
   if (dateFromParam && dateToParam) {
-    startDate = new Date(dateFromParam)
-    endDate = new Date(dateToParam)
-    startDate.setHours(0, 0, 0, 0)
-    endDate.setHours(23, 59, 59, 999)
+    // Parse date strings in local timezone to avoid UTC offset issues
+    const [fromYear, fromMonth, fromDay] = dateFromParam.split("-").map(Number)
+    const [toYear, toMonth, toDay] = dateToParam.split("-").map(Number)
+    startDate = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
+    endDate = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
   } else {
     startDate = getStartDate(granularity)
     endDate = new Date()

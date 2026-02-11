@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  RotateCcw,
   RefreshCw,
   Landmark,
   CreditCard,
@@ -70,6 +71,7 @@ interface Account {
 interface AccountSwitcherProps {
   selectedAccountId: string
   onAccountChange: (accountId: string) => void
+  onSync?: () => void
 }
 
 // Create formatter at module level for performance
@@ -128,7 +130,7 @@ function AccountIcon({ type, className }: { type: string; className?: string }) 
   }
 }
 
-export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountSwitcherProps) {
+export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: AccountSwitcherProps) {
   const [open, setOpen] = useState(false)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -140,6 +142,9 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
+  const [resetTarget, setResetTarget] = useState<Account | null>(null)
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetError, setResetError] = useState("")
   const [importTarget, setImportTarget] = useState<Account | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
@@ -255,6 +260,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
           [key]: `+${added} ~${modified} -${removed}`,
         }))
         fetchAccounts()
+        onSync?.()
       } else if (result.loginRequired) {
         fetchAccounts()
       } else {
@@ -296,6 +302,47 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
     setDeleteTarget(account)
     setDeleteError("")
     setOpen(false)
+  }
+
+  function handleResetClick(account: Account, e: React.MouseEvent) {
+    e.stopPropagation()
+    setResetTarget(account)
+    setResetError("")
+    setOpen(false)
+  }
+
+  async function handleResetConfirm() {
+    if (!resetTarget) return
+    setIsResetting(true)
+    setResetError("")
+
+    try {
+      const res = await fetch(`/api/finances/accounts/${resetTarget.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset" }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      }
+
+      const result = await res.json()
+
+      if (result.success) {
+        setResetTarget(null)
+        fetchAccounts()
+        onSync?.()
+      } else {
+        setResetError(result.error || "Failed to reset account.")
+      }
+    } catch (error) {
+      setResetError(
+        error instanceof Error ? error.message : "Failed to reset account. Please try again."
+      )
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   function handleImportCSV(account: Account, e: React.MouseEvent) {
@@ -376,7 +423,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
             <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[360px] p-0" align="start" sideOffset={8}>
+        <PopoverContent className="w-[420px] p-0" align="start" sideOffset={8}>
           <div className="flex items-center justify-between px-3 py-2 border-b">
             <span className="text-sm font-medium">Accounts</span>
             <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
@@ -481,14 +528,14 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                           }
                         }}
                       >
-                        <div className="flex items-start justify-between gap-2 min-w-0">
-                          <div className="flex items-start gap-2.5 min-w-0 flex-1 overflow-hidden">
+                        <div className="flex items-start gap-2 min-w-0 w-full">
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
                             <div className="flex size-8 items-center justify-center rounded-md bg-muted shrink-0 mt-0.5">
                               <AccountIcon type={account.type} />
                             </div>
-                            <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+                            <div className="flex flex-col min-w-0 flex-1">
                               <div className="flex items-center gap-2 mb-1 min-w-0">
-                                <span className="font-medium text-sm truncate">
+                                <span className="font-medium text-sm truncate min-w-0">
                                   {account.name}
                                 </span>
                                 {isSelected && (
@@ -555,10 +602,10 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 variant="outline"
                                 size="sm"
                                 onClick={(e) => handleImportCSV(account, e)}
-                                className="h-7 px-2 text-xs whitespace-nowrap"
+                                className="h-7 px-2 text-xs"
+                                title="Import CSV"
                               >
-                                <Upload className="mr-1 size-3" />
-                                Import
+                                <Upload className="size-3" />
                               </Button>
                             )}
 
@@ -579,6 +626,15 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                                 <Pencil className="mr-2 size-4" />
                                 Edit
                               </DropdownMenuItem>
+                              {account._count.transactions > 0 && (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={(e) => handleResetClick(account, e)}
+                                >
+                                  <RotateCcw className="mr-2 size-4" />
+                                  Reset
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 variant="destructive"
@@ -708,6 +764,64 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange }: AccountS
                 </>
               ) : (
                 "Delete"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Confirmation */}
+      <Dialog
+        open={!!resetTarget}
+        onOpenChange={(open) => {
+          if (!open) setResetTarget(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Account</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reset{" "}
+              <strong>{resetTarget?.name}</strong>? This will delete all
+              transactions but keep the account.
+            </DialogDescription>
+          </DialogHeader>
+          {resetTarget && resetTarget._count.transactions > 0 && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <strong>
+                {resetTarget._count.transactions} transaction
+                {resetTarget._count.transactions !== 1 ? "s" : ""}
+              </strong>{" "}
+              will be permanently deleted.
+              {resetTarget.plaidAccountId &&
+                " The Plaid sync cursor will be reset so transactions can be re-imported."}
+            </div>
+          )}
+          {resetError && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {resetError}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setResetTarget(null)}
+              disabled={isResetting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleResetConfirm}
+              disabled={isResetting}
+            >
+              {isResetting ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                "Reset Account"
               )}
             </Button>
           </DialogFooter>

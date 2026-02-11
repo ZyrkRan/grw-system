@@ -84,7 +84,7 @@ function calculateGranularity(startDate: Date, endDate: Date): Granularity {
   const durationMs = endDate.getTime() - startDate.getTime()
   const durationDays = durationMs / (1000 * 60 * 60 * 24)
 
-  if (durationDays < 7) {
+  if (durationDays < 32) {
     return "daily"
   } else if (durationDays <= 90) {
     return "weekly"
@@ -113,8 +113,11 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const startDate = new Date(dateFromParam)
-  const endDate = new Date(dateToParam)
+  // Parse date strings in local timezone to avoid UTC offset issues
+  const [fromYear, fromMonth, fromDay] = dateFromParam.split("-").map(Number)
+  const [toYear, toMonth, toDay] = dateToParam.split("-").map(Number)
+  const startDate = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
+  const endDate = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
 
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
     return NextResponse.json({ success: false, error: "Invalid date format" }, { status: 400 })
@@ -126,10 +129,6 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     )
   }
-
-  // Set time boundaries
-  startDate.setHours(0, 0, 0, 0)
-  endDate.setHours(23, 59, 59, 999)
 
   // Parse optional account ID
   const accountIdParam = searchParams.get("accountId")

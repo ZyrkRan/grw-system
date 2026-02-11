@@ -83,9 +83,10 @@ function formatDate(dateString: string): string {
 interface TransactionsTableProps {
   accountId?: string
   timeframe?: TimeframeValue
+  refreshKey?: number
 }
 
-export function TransactionsTable({ accountId, timeframe }: TransactionsTableProps) {
+export function TransactionsTable({ accountId, timeframe, refreshKey }: TransactionsTableProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<CategoryRef[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -153,7 +154,7 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
     } finally {
       setIsLoading(false)
     }
-  }, [accountId, timeframe])
+  }, [accountId, timeframe, refreshKey])
 
   useEffect(() => {
     fetchTransactions()
@@ -290,6 +291,9 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
     fetchTransactions()
   }
 
+  // Count uncategorized transactions for display in title
+  const uncategorizedCount = transactions.filter((txn) => txn.category === null).length
+
   const transactionColumns: ColumnDef<Transaction>[] = [
     {
       key: "date",
@@ -375,7 +379,7 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
               }}
             >
               <X className="mr-2 size-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground">No Category</span>
+              <span className="text-muted-foreground">Uncategorized</span>
             </DropdownMenuItem>
             {categories.map((c) => (
               <DropdownMenuItem
@@ -463,7 +467,9 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Transactions</h2>
+        <h2 className="text-xl font-semibold">
+          Transactions {uncategorizedCount > 0 && `(${uncategorizedCount} uncategorized)`}
+        </h2>
         <Button onClick={handleAddTransaction}>
           <Plus className="mr-2 size-4" />
           Add Transaction
@@ -588,7 +594,7 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
                       }}
                     >
                       <X className="mr-2 size-3.5 text-muted-foreground" />
-                      <span className="text-muted-foreground">No Category</span>
+                      <span className="text-muted-foreground">Uncategorized</span>
                     </DropdownMenuItem>
                     {categories.map((c) => (
                       <DropdownMenuItem
@@ -643,7 +649,7 @@ export function TransactionsTable({ accountId, timeframe }: TransactionsTablePro
                     onClick={() => handleBulkCategoryAssign(selected, null, clearSelection)}
                   >
                     <X className="mr-2 size-3.5 text-muted-foreground" />
-                    <span className="text-muted-foreground">No Category</span>
+                    <span className="text-muted-foreground">Uncategorized</span>
                   </DropdownMenuItem>
                   {categories.map((c) => (
                     <DropdownMenuItem

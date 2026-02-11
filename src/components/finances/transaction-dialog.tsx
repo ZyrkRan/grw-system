@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { DatePicker } from "@/components/ui/date-picker"
 import {
   Select,
   SelectContent,
@@ -52,13 +53,6 @@ interface TransactionDialogProps {
   onSuccess: () => void
 }
 
-function toDateInputValue(dateString: string | null | undefined): string {
-  if (!dateString) return ""
-  const d = new Date(dateString)
-  if (isNaN(d.getTime())) return ""
-  return d.toISOString().split("T")[0]
-}
-
 export function TransactionDialog({
   open,
   onOpenChange,
@@ -71,7 +65,7 @@ export function TransactionDialog({
   const [categories, setCategories] = useState<CategoryRef[]>([])
   const [isLoadingData, setIsLoadingData] = useState(true)
 
-  const [date, setDate] = useState("")
+  const [date, setDate] = useState<Date | undefined>(new Date())
   const [description, setDescription] = useState("")
   const [amount, setAmount] = useState("")
   const [type, setType] = useState("OUTFLOW")
@@ -116,7 +110,8 @@ export function TransactionDialog({
     if (!open) return
 
     if (transaction) {
-      setDate(toDateInputValue(transaction.date))
+      const txnDate = new Date(transaction.date)
+      setDate(isNaN(txnDate.getTime()) ? new Date() : txnDate)
       setDescription(transaction.description)
       setAmount(String(Math.abs(Number(transaction.amount))))
       setType(transaction.type)
@@ -125,7 +120,7 @@ export function TransactionDialog({
       setMerchantName(transaction.merchantName ?? "")
       setNotes(transaction.notes ?? "")
     } else {
-      setDate(new Date().toISOString().split("T")[0])
+      setDate(new Date())
       setDescription("")
       setAmount("")
       setType("OUTFLOW")
@@ -167,7 +162,7 @@ export function TransactionDialog({
 
     try {
       const payload: Record<string, unknown> = {
-        date: new Date(date).toISOString(),
+        date: date.toISOString(),
         description: description.trim(),
         amount: parseFloat(amount),
         type,
@@ -236,12 +231,10 @@ export function TransactionDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="txn-date">Date *</Label>
-                  <Input
-                    id="txn-date"
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    required
+                  <DatePicker
+                    date={date}
+                    onSelect={setDate}
+                    maxDate={new Date()}
                   />
                 </div>
 

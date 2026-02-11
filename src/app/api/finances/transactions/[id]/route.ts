@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@/generated/prisma"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -128,7 +129,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
           create: {
             userId,
             plaidTransactionId: transaction.plaidTransactionId,
-            transactionData: transaction.rawPlaidData || null,
+            transactionData: transaction.rawPlaidData ?? Prisma.DbNull,
           },
           update: {
             deletedAt: new Date(), // Update timestamp if re-deleted

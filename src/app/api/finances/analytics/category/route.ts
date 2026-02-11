@@ -28,11 +28,11 @@ export async function GET(request: NextRequest) {
   let months: number
 
   if (dateFromParam && dateToParam) {
-    // Use dateFrom/dateTo parameters
-    selectedMonthStart = new Date(dateFromParam)
-    selectedMonthEnd = new Date(dateToParam)
-    selectedMonthStart.setHours(0, 0, 0, 0)
-    selectedMonthEnd.setHours(23, 59, 59, 999)
+    // Parse date strings in local timezone to avoid UTC offset issues
+    const [fromYear, fromMonth, fromDay] = dateFromParam.split("-").map(Number)
+    const [toYear, toMonth, toDay] = dateToParam.split("-").map(Number)
+    selectedMonthStart = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
+    selectedMonthEnd = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
 
     // For trend data, use the same range
     trendStart = new Date(selectedMonthStart)
