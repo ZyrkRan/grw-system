@@ -8,7 +8,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -180,6 +180,8 @@ export function InflowOutflowChart({
         ? "text-red-600"
         : ""
 
+  const [compactOpen, setCompactOpen] = useState(false)
+
   if (compact) {
     return (
       <Card>
@@ -187,7 +189,7 @@ export function InflowOutflowChart({
           {loading ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-[200px] w-full" />
+              <Skeleton className="h-[200px] w-full hidden md:block" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -203,7 +205,11 @@ export function InflowOutflowChart({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="flex items-center justify-between w-full md:cursor-default"
+                onClick={() => setCompactOpen((o) => !o)}
+              >
                 <h3 className="text-sm font-semibold">Inflow/Outflow</h3>
                 <div className="flex items-center gap-2 text-xs">
                   <span className={cn("font-medium", netColor)}>
@@ -211,32 +217,42 @@ export function InflowOutflowChart({
                     {formatCurrency(data.summary.netChange)}
                   </span>
                   {netIcon}
+                  <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
                 </div>
+              </button>
+              <div className="flex items-center gap-1 text-xs">
+                <span className="text-green-600 font-medium">{formatCurrency(data.summary.totalInflow)}</span>
+                <span className="text-muted-foreground">in</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-red-600 font-medium">{formatCurrency(data.summary.totalOutflow)}</span>
+                <span className="text-muted-foreground">out</span>
               </div>
-              <ChartContainer config={chartConfig} className="h-[200px] w-full">
-                <BarChart accessibilityLayer data={data.points}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                  <YAxis
-                    tickFormatter={(v: number) => formatCurrency(v)}
-                    axisLine={false}
-                    tickLine={false}
-                    width={60}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <ChartTooltip content={<CustomTooltip />} />
-                  <Bar
-                    dataKey="inflow"
-                    fill="var(--color-inflow)"
-                    radius={[2, 2, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="outflow"
-                    fill="var(--color-outflow)"
-                    radius={[2, 2, 0, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
+              <div className={cn(compactOpen ? "block" : "hidden md:block")}>
+                <ChartContainer config={chartConfig} className="h-[200px] w-full">
+                  <BarChart accessibilityLayer data={data.points}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                    <YAxis
+                      tickFormatter={(v: number) => formatCurrency(v)}
+                      axisLine={false}
+                      tickLine={false}
+                      width={60}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <ChartTooltip content={<CustomTooltip />} />
+                    <Bar
+                      dataKey="inflow"
+                      fill="var(--color-inflow)"
+                      radius={[2, 2, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="outflow"
+                      fill="var(--color-outflow)"
+                      radius={[2, 2, 0, 0]}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              </div>
             </div>
           )}
         </CardContent>

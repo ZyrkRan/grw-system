@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { TransactionsTable } from "@/components/finances/transactions-table"
@@ -21,6 +21,11 @@ export default function FinancesPage() {
   const [activeTab, setActiveTab] = useState<Tab>("transactions")
   const [selectedAccountId, setSelectedAccountId] = useState("all")
   const [timeframe, setTimeframe] = useState<TimeframeValue>(() => getTimeframeValue("month"))
+  const [syncVersion, setSyncVersion] = useState(0)
+
+  const handleSync = useCallback(() => {
+    setSyncVersion((v) => v + 1)
+  }, [])
 
   // Hydrate timeframe from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
@@ -61,6 +66,7 @@ export default function FinancesPage() {
             <AccountSwitcher
               selectedAccountId={selectedAccountId}
               onAccountChange={handleAccountChange}
+              onSync={handleSync}
             />
           )}
         </div>
@@ -97,14 +103,14 @@ export default function FinancesPage() {
         <>
           <TimeframeSelector value={timeframe} onChange={handleTimeframeChange} />
 
-          {/* Analytics Grid - All charts visible */}
+          {/* Analytics Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <InflowOutflowChart accountId={selectedAccountId} timeframe={timeframe} compact />
-            <CategoryAnalytics accountId={selectedAccountId} timeframe={timeframe} compact />
-            <BalanceChart accountId={selectedAccountId} timeframe={timeframe} compact />
+            <InflowOutflowChart key={`io-${syncVersion}`} accountId={selectedAccountId} timeframe={timeframe} compact />
+            <CategoryAnalytics key={`ca-${syncVersion}`} accountId={selectedAccountId} timeframe={timeframe} compact />
+            <BalanceChart key={`bc-${syncVersion}`} accountId={selectedAccountId} timeframe={timeframe} compact />
           </div>
 
-          <TransactionsTable accountId={selectedAccountId} />
+          <TransactionsTable accountId={selectedAccountId} refreshKey={syncVersion} />
         </>
       )}
       {activeTab === "categories" && <CategoriesManager />}

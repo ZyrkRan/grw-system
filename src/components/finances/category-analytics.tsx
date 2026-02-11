@@ -12,7 +12,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { TrendingDown } from "lucide-react"
+import { TrendingDown, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -562,6 +562,8 @@ export function CategoryAnalytics({
     setExpandedOutflowCategory(categoryId)
   }, [])
 
+  const [compactOpen, setCompactOpen] = useState(false)
+
   if (compact) {
     return (
       <Card>
@@ -569,7 +571,7 @@ export function CategoryAnalytics({
           {loading ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-[200px] w-full" />
+              <Skeleton className="h-[200px] w-full hidden md:block" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -585,8 +587,29 @@ export function CategoryAnalytics({
             </div>
           ) : (
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Category Spending</h3>
-              <div className="grid grid-cols-2 gap-3 h-[200px]">
+              <button
+                type="button"
+                className="flex items-center justify-between w-full md:cursor-default"
+                onClick={() => setCompactOpen((o) => !o)}
+              >
+                <h3 className="text-sm font-semibold">Category Spending</h3>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-medium">{formatCurrency(data.summary.totalSpend)}</span>
+                  <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
+                </div>
+              </button>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                {data.summary.topCategory && (
+                  <>
+                    <span>Top: <span className="font-medium text-foreground">{data.summary.topCategory}</span></span>
+                    {data.summary.uncategorizedCount > 0 && <span>·</span>}
+                  </>
+                )}
+                {data.summary.uncategorizedCount > 0 && (
+                  <span className="text-amber-600">{data.summary.uncategorizedCount} uncategorized</span>
+                )}
+              </div>
+              <div className={cn("grid grid-cols-2 gap-3 h-[200px]", compactOpen ? "grid" : "hidden md:grid")}>
                 {/* Inflow Pie */}
                 <div className="flex flex-col">
                   <div className="flex items-center justify-between mb-1">

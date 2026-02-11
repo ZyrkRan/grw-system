@@ -8,7 +8,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Loader2, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -142,7 +142,7 @@ export function BalanceChart({
     const durationMs = toDate.getTime() - fromDate.getTime()
     const durationDays = durationMs / (1000 * 60 * 60 * 24)
 
-    if (durationDays <= 7) {
+    if (durationDays < 32) {
       return "daily"
     } else if (durationDays <= 90) {
       return "weekly"
@@ -382,6 +382,8 @@ export function BalanceChart({
         ? "text-red-600"
         : ""
 
+  const [compactOpen, setCompactOpen] = useState(false)
+
   if (compact) {
     return (
       <Card>
@@ -389,7 +391,7 @@ export function BalanceChart({
           {loading ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-[200px] w-full" />
+              <Skeleton className="h-[200px] w-full hidden md:block" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -405,47 +407,63 @@ export function BalanceChart({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="flex items-center justify-between w-full md:cursor-default"
+                onClick={() => setCompactOpen((o) => !o)}
+              >
                 <h3 className="text-sm font-semibold">Balance History</h3>
-                <span className="text-xs font-medium">
-                  {formatCurrency(data.summary.endBalance)}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium">
+                    {formatCurrency(data.summary.endBalance)}
+                  </span>
+                  <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
+                </div>
+              </button>
+              <div className="flex items-center gap-1 text-xs">
+                <span className={cn("font-medium", netColor)}>
+                  {data.summary.netChange >= 0 ? "+" : ""}{formatCurrency(data.summary.netChange)}
                 </span>
+                <span className="text-muted-foreground">from</span>
+                <span className="text-muted-foreground">{formatCurrency(data.summary.startBalance)} start</span>
               </div>
-              <ChartContainer config={balanceChartConfig} className="h-[200px] w-full">
-                <LineChart accessibilityLayer data={data.points}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis
-                    tickFormatter={(v: number) => formatCurrency(v)}
-                    axisLine={false}
-                    tickLine={false}
-                    width={60}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value) => (
-                          <span className="font-medium">{formatCurrency(Number(value))}</span>
-                        )}
-                      />
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="balance"
-                    stroke="var(--color-balance)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 3, strokeWidth: 1 }}
-                  />
-                </LineChart>
-              </ChartContainer>
+              <div className={cn(compactOpen ? "block" : "hidden md:block")}>
+                <ChartContainer config={balanceChartConfig} className="h-[200px] w-full">
+                  <LineChart accessibilityLayer data={data.points}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis
+                      tickFormatter={(v: number) => formatCurrency(v)}
+                      axisLine={false}
+                      tickLine={false}
+                      width={60}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          formatter={(value) => (
+                            <span className="font-medium">{formatCurrency(Number(value))}</span>
+                          )}
+                        />
+                      }
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="balance"
+                      stroke="var(--color-balance)"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 3, strokeWidth: 1 }}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              </div>
             </div>
           )}
         </CardContent>

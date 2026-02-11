@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { cn } from "@/lib/utils"
 import { useState, useMemo } from "react"
 
@@ -78,12 +78,23 @@ const presets: Array<{ value: TimeframePreset; label: string }> = [
 ]
 
 export function TimeframeSelector({ value, onChange }: TimeframeSelectorProps) {
-  const [customFrom, setCustomFrom] = useState(value.dateFrom)
-  const [customTo, setCustomTo] = useState(value.dateTo)
+  // Convert ISO strings to Date objects for DatePicker
+  const [customFromDate, setCustomFromDate] = useState<Date | undefined>(() => {
+    const date = new Date(value.dateFrom)
+    return isNaN(date.getTime()) ? undefined : date
+  })
+  const [customToDate, setCustomToDate] = useState<Date | undefined>(() => {
+    const date = new Date(value.dateTo)
+    return isNaN(date.getTime()) ? undefined : date
+  })
   const [error, setError] = useState<string | null>(null)
 
   // Calculate max date once to avoid hydration mismatch
-  const maxDate = useMemo(() => new Date().toISOString().split("T")[0], [])
+  const maxDate = useMemo(() => {
+    const date = new Date()
+    date.setHours(23, 59, 59, 999)
+    return date
+  }, [])
 
   const handlePresetChange = (preset: TimeframePreset) => {
     setError(null)
@@ -91,52 +102,54 @@ export function TimeframeSelector({ value, onChange }: TimeframeSelectorProps) {
       // Just switch to custom mode, keep current dates
       onChange({
         preset: "custom",
-        dateFrom: customFrom,
-        dateTo: customTo,
+        dateFrom: customFromDate ? customFromDate.toISOString().split("T")[0] : value.dateFrom,
+        dateTo: customToDate ? customToDate.toISOString().split("T")[0] : value.dateTo,
       })
     } else {
       const newValue = getTimeframeValue(preset)
-      setCustomFrom(newValue.dateFrom)
-      setCustomTo(newValue.dateTo)
+      setCustomFromDate(new Date(newValue.dateFrom))
+      setCustomToDate(new Date(newValue.dateTo))
       onChange(newValue)
     }
   }
 
-  const handleCustomDateChange = (type: "from" | "to", dateStr: string) => {
+  const handleCustomDateChange = (type: "from" | "to", date: Date | undefined) => {
     setError(null)
 
-    const newFrom = type === "from" ? dateStr : customFrom
-    const newTo = type === "to" ? dateStr : customTo
+    if (!date) return
+
+    const newFromDate = type === "from" ? date : customFromDate
+    const newToDate = type === "to" ? date : customToDate
 
     // Validate dates
-    const fromDate = new Date(newFrom)
-    const toDate = new Date(newTo)
     const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    today.setHours(23, 59, 59, 999)
 
-    if (toDate < fromDate) {
-      setError("End date must be after start date")
+    if (date > today) {
+      setError("Dates cannot be in the future")
       return
     }
 
-    if (fromDate > today || toDate > today) {
-      setError("Dates cannot be in the future")
+    if (newFromDate && newToDate && newToDate < newFromDate) {
+      setError("End date must be after start date")
       return
     }
 
     // Update local state
     if (type === "from") {
-      setCustomFrom(dateStr)
+      setCustomFromDate(date)
     } else {
-      setCustomTo(dateStr)
+      setCustomToDate(date)
     }
 
-    // Update parent
-    onChange({
-      preset: "custom",
-      dateFrom: newFrom,
-      dateTo: newTo,
-    })
+    // Update parent if both dates are set
+    if (newFromDate && newToDate) {
+      onChange({
+        preset: "custom",
+        dateFrom: newFromDate.toISOString().split("T")[0],
+        dateTo: newToDate.toISOString().split("T")[0],
+      })
+    }
   }
 
   const showCustomInputs = value.preset === "custom"
@@ -164,21 +177,22 @@ export function TimeframeSelector({ value, onChange }: TimeframeSelectorProps) {
 
         {/* Custom date inputs */}
         {showCustomInputs && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <Input
-              type="date"
-              value={customFrom}
-              onChange={(e) => handleCustomDateChange("from", e.target.value)}
-              className="w-auto"
-              max={maxDate}
+          <div className="flex items-center gap-2">
+            <DatePicker
+              date={customFromDate}
+              onSelect={(date) => handleCustomDateChange("from", date)}
+              placeholder="From"
+              maxDate={maxDate}
+              className="w-[150px]"
             />
             <span className="text-sm text-muted-foreground">to</span>
-            <Input
-              type="date"
-              value={customTo}
-              onChange={(e) => handleCustomDateChange("to", e.target.value)}
-              className="w-auto"
-              max={maxDate}
+            <DatePicker
+              date={customToDate}
+              onSelect={(date) => handleCustomDateChange("to", date)}
+              placeholder="To"
+              minDate={customFromDate}
+              maxDate={maxDate}
+              className="w-[150px]"
             />
           </div>
         )}
