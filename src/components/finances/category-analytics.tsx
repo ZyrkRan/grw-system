@@ -12,7 +12,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { TrendingDown, Minus, ChevronDown } from "lucide-react"
+import { TrendingDown, Minus, ChevronDown, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -25,6 +25,12 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   ChartContainer,
   ChartTooltip,
@@ -161,11 +167,15 @@ function SpendingPieChart({
   compact = false,
   title = "Spending by Category",
   onCategoryClick,
+  onSliceSelect,
+  tooltipSide,
 }: {
   data: PieDataItem[]
   compact?: boolean
   title?: string
   onCategoryClick?: (categoryId: number | null) => void
+  onSliceSelect?: (categoryId: number | null, categoryName: string) => void
+  tooltipSide?: "left" | "right"
 }) {
   const pieConfig = useMemo(() => {
     const config: ChartConfig = {}
@@ -190,8 +200,10 @@ function SpendingPieChart({
   }, [data])
 
   const handlePieClick = (data: any) => {
-    if (onCategoryClick && data.isGroup) {
+    if (data.isGroup && onCategoryClick) {
       onCategoryClick(data.id)
+    } else if (!data.isGroup && onSliceSelect) {
+      onSliceSelect(data.id, data.name)
     }
   }
 
@@ -223,47 +235,93 @@ function SpendingPieChart({
     )
   }
 
+  // Key that changes when data changes to retrigger Recharts animation
+  const animationKey = useMemo(
+    () => data.map((d) => `${d.id}-${d.value}`).join(","),
+    [data]
+  )
+
+  // Custom cursor-following tooltip for compact charts
+  const [hoveredSlice, setHoveredSlice] = useState<typeof chartData[number] | null>(null)
+  const [mousePos, setMousePos] = useState<{x: number, y: number} | null>(null)
+
+  const handleChartMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!tooltipSide) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMousePos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    })
+  }, [tooltipSide])
+
+  const handleChartMouseLeave = useCallback(() => {
+    setMousePos(null)
+    setHoveredSlice(null)
+  }, [])
+
   if (compact) {
     return (
-      <ChartContainer config={pieConfig} className="h-full w-full">
-        <PieChart accessibilityLayer>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            innerRadius={30}
-            outerRadius={55}
-            paddingAngle={2}
-            dataKey="value"
-            nameKey="name"
-            onClick={handlePieClick}
-            style={onCategoryClick ? { cursor: 'pointer' } : undefined}
-          >
-            {chartData.map((entry, index) => (
-              <Cell key={index} fill={entry.color} stroke="none" />
-            ))}
-            <Label content={renderCenterLabel} position="center" />
-          </Pie>
-          <ChartTooltip
-            content={({ active, payload }) => {
-              if (!active || !payload || !payload.length) return null
-              const data = payload[0].payload
-              return (
-                <div className="rounded-lg border bg-background p-2 shadow-sm">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium">{data.name}</span>
-                    <span className="text-sm font-bold">{formatCurrency(data.value)}</span>
-                    <span className="text-xs text-muted-foreground">{data.count} transactions</span>
-                    {data.isGroup && onCategoryClick && (
-                      <span className="text-xs text-primary">Click to expand</span>
-                    )}
-                  </div>
-                </div>
-              )
+      <div
+        onMouseMove={handleChartMouseMove}
+        onMouseLeave={handleChartMouseLeave}
+        className="h-full w-full relative"
+      >
+        <ChartContainer config={pieConfig} className="h-full w-full">
+          <PieChart accessibilityLayer>
+            <Pie
+              key={animationKey}
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={38}
+              outerRadius={65}
+              paddingAngle={2}
+              dataKey="value"
+              nameKey="name"
+              animationBegin={0}
+              animationDuration={500}
+              animationEasing="ease-out"
+              onClick={handlePieClick}
+              style={onCategoryClick || onSliceSelect ? { cursor: 'pointer' } : undefined}
+              onMouseLeave={() => setHoveredSlice(null)}
+            >
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={index}
+                  fill={entry.color}
+                  stroke="none"
+                  onMouseEnter={() => setHoveredSlice(entry)}
+                />
+              ))}
+              <Label content={renderCenterLabel} position="center" />
+            </Pie>
+          </PieChart>
+        </ChartContainer>
+        {tooltipSide && hoveredSlice && mousePos && (
+          <div
+            className="pointer-events-none absolute z-50 rounded-lg border bg-background p-2 shadow-sm"
+            style={{
+              top: mousePos.y,
+              left: mousePos.x,
+              transform: tooltipSide === "right"
+                ? "translateX(16px) translateY(-50%)"
+                : "translateX(calc(-100% - 16px)) translateY(-50%)",
             }}
-          />
-        </PieChart>
-      </ChartContainer>
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium">{hoveredSlice.name}</span>
+              <span className="text-sm font-bold">{formatCurrency(hoveredSlice.value)}</span>
+              <span className="text-xs text-muted-foreground">{hoveredSlice.count} transactions</span>
+              {hoveredSlice.isGroup && onCategoryClick && (
+                <span className="text-xs text-primary">Click to expand</span>
+              )}
+              {!hoveredSlice.isGroup && onSliceSelect && (
+                <span className="text-xs text-primary">Click to view transactions</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -276,6 +334,7 @@ function SpendingPieChart({
         <ChartContainer config={pieConfig} className="mx-auto min-h-[280px] w-full">
           <PieChart accessibilityLayer>
             <Pie
+              key={animationKey}
               data={chartData}
               cx="50%"
               cy="50%"
@@ -284,8 +343,11 @@ function SpendingPieChart({
               paddingAngle={2}
               dataKey="value"
               nameKey="name"
+              animationBegin={0}
+              animationDuration={500}
+              animationEasing="ease-out"
               onClick={handlePieClick}
-              style={onCategoryClick ? { cursor: 'pointer' } : undefined}
+              style={onCategoryClick || onSliceSelect ? { cursor: 'pointer' } : undefined}
             >
               {chartData.map((entry, index) => (
                 <Cell key={index} fill={entry.color} stroke="none" />
@@ -304,6 +366,9 @@ function SpendingPieChart({
                       <span className="text-xs text-muted-foreground">{data.count} transactions</span>
                       {data.isGroup && onCategoryClick && (
                         <span className="text-xs text-primary">Click to expand</span>
+                      )}
+                      {!data.isGroup && onSliceSelect && (
+                        <span className="text-xs text-primary">Click to view transactions</span>
                       )}
                     </div>
                   </div>
@@ -468,7 +533,102 @@ function EmptyState() {
   )
 }
 
+// --- Transaction dialog ---
+
+function CategoryTransactionsDialog({
+  open,
+  onOpenChange,
+  category,
+  transactions,
+  loading,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  category: { id: number; name: string; color: string } | null
+  transactions: DialogTransaction[]
+  loading: boolean
+}) {
+  const total = transactions.reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {category && (
+              <div
+                className="size-3 rounded-full shrink-0"
+                style={{ backgroundColor: category.color }}
+              />
+            )}
+            {category?.name || "Transactions"}
+          </DialogTitle>
+          {!loading && transactions.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {transactions.length} transaction{transactions.length !== 1 ? "s" : ""} &middot; {formatCurrency(total)}
+            </p>
+          )}
+        </DialogHeader>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : transactions.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+            No transactions found
+          </div>
+        ) : (
+          <div className="max-h-[400px] overflow-y-auto -mx-6 px-6">
+            <div className="space-y-1">
+              {transactions.map((tx) => {
+                const amount = Number(tx.amount)
+                const isInflow = tx.type === "INFLOW"
+                return (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between gap-3 rounded-md px-3 py-2 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">
+                        {tx.merchantName || tx.description}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(tx.date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                        {tx.merchantName && tx.description !== tx.merchantName && (
+                          <span className="ml-1.5">&middot; {tx.description}</span>
+                        )}
+                      </p>
+                    </div>
+                    <span className={cn(
+                      "text-sm font-medium shrink-0",
+                      isInflow ? "text-emerald-600" : "text-foreground"
+                    )}>
+                      {isInflow ? "+" : "-"}{formatCurrency(Math.abs(amount))}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // --- Main component ---
+
+interface DialogTransaction {
+  id: number
+  date: string
+  description: string
+  amount: number | string
+  type: string
+  merchantName: string | null
+}
 
 export function CategoryAnalytics({
   accountId,
@@ -484,6 +644,12 @@ export function CategoryAnalytics({
   const [error, setError] = useState(false)
   const [expandedInflowCategory, setExpandedInflowCategory] = useState<number | null>(null)
   const [expandedOutflowCategory, setExpandedOutflowCategory] = useState<number | null>(null)
+
+  // Transaction dialog state
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogCategory, setDialogCategory] = useState<{ id: number; name: string; color: string } | null>(null)
+  const [dialogTransactions, setDialogTransactions] = useState<DialogTransaction[]>([])
+  const [dialogLoading, setDialogLoading] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -562,10 +728,40 @@ export function CategoryAnalytics({
     setExpandedOutflowCategory(categoryId)
   }, [])
 
+  const handleSliceSelect = useCallback(async (categoryId: number | null, categoryName: string) => {
+    if (categoryId === null) return
+    // Find the color from the pie data
+    const item = data?.inflowPieData.find((d) => d.id === categoryId)
+      || data?.outflowPieData.find((d) => d.id === categoryId)
+    setDialogCategory({ id: categoryId, name: categoryName, color: item?.color || "#6b7280" })
+    setDialogOpen(true)
+    setDialogLoading(true)
+    setDialogTransactions([])
+
+    try {
+      const params = new URLSearchParams()
+      params.set("categoryId", String(categoryId))
+      if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+      if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
+      if (accountId && accountId !== "all") params.set("accountId", accountId)
+      params.set("pageSize", "50")
+      const res = await fetch(`/api/finances/transactions?${params}`)
+      const result = await res.json()
+      if (result.success) {
+        setDialogTransactions(result.data)
+      }
+    } catch (err) {
+      console.error("Failed to fetch category transactions:", err)
+    } finally {
+      setDialogLoading(false)
+    }
+  }, [data, timeframe, accountId])
+
   const [compactOpen, setCompactOpen] = useState(false)
 
   if (compact) {
     return (
+    <>
       <Card>
         <CardContent className="pt-6">
           {loading ? (
@@ -646,31 +842,32 @@ export function CategoryAnalytics({
 
               <div className={cn(compactOpen ? "block" : "hidden md:block")}>
                 <Separator className="mb-3" />
-                <div className="grid grid-cols-2 gap-3 h-[150px]">
+                <div className="grid grid-cols-2 gap-3 h-[180px]">
                 {/* Inflow Pie */}
-                <div className="flex flex-col">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs text-muted-foreground">Inflow</p>
+                <div className="flex flex-col min-h-0">
+                  <div className="flex items-center justify-between h-5 mb-1">
+                    <p className="text-xs text-muted-foreground truncate">
+                      {expandedInflowName ? expandedInflowName : "Inflow"}
+                    </p>
                     {expandedInflowName && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-5 px-2 text-xs"
+                        className="h-5 px-2 text-xs shrink-0"
                         onClick={() => setExpandedInflowCategory(null)}
                       >
                         ← Back
                       </Button>
                     )}
                   </div>
-                  {expandedInflowName && (
-                    <p className="text-xs font-medium mb-1">{expandedInflowName}</p>
-                  )}
-                  <div className="flex-1">
+                  <div className="flex-1 min-h-0">
                     {filteredInflowData.length > 0 ? (
                       <SpendingPieChart
                         data={filteredInflowData}
                         compact
                         onCategoryClick={handleInflowCategoryClick}
+                        onSliceSelect={handleSliceSelect}
+                        tooltipSide="right"
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
@@ -680,29 +877,30 @@ export function CategoryAnalytics({
                   </div>
                 </div>
                 {/* Outflow Pie */}
-                <div className="flex flex-col">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs text-muted-foreground">Outflow</p>
+                <div className="flex flex-col min-h-0">
+                  <div className="flex items-center justify-between h-5 mb-1">
+                    <p className="text-xs text-muted-foreground truncate">
+                      {expandedOutflowName ? expandedOutflowName : "Outflow"}
+                    </p>
                     {expandedOutflowName && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-5 px-2 text-xs"
+                        className="h-5 px-2 text-xs shrink-0"
                         onClick={() => setExpandedOutflowCategory(null)}
                       >
                         ← Back
                       </Button>
                     )}
                   </div>
-                  {expandedOutflowName && (
-                    <p className="text-xs font-medium mb-1">{expandedOutflowName}</p>
-                  )}
-                  <div className="flex-1">
+                  <div className="flex-1 min-h-0">
                     {filteredOutflowData.length > 0 ? (
                       <SpendingPieChart
                         data={filteredOutflowData}
                         compact
                         onCategoryClick={handleOutflowCategoryClick}
+                        onSliceSelect={handleSliceSelect}
+                        tooltipSide="left"
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
@@ -717,6 +915,14 @@ export function CategoryAnalytics({
           )}
         </CardContent>
       </Card>
+      <CategoryTransactionsDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        category={dialogCategory}
+        transactions={dialogTransactions}
+        loading={dialogLoading}
+      />
+    </>
     )
   }
 
@@ -797,6 +1003,7 @@ export function CategoryAnalytics({
                 data={filteredInflowData}
                 title={expandedInflowName ? "Subcategories" : "Inflow by Category"}
                 onCategoryClick={handleInflowCategoryClick}
+                onSliceSelect={handleSliceSelect}
               />
             </div>
             <div className="space-y-2">
@@ -816,6 +1023,7 @@ export function CategoryAnalytics({
                 data={filteredOutflowData}
                 title={expandedOutflowName ? "Subcategories" : "Outflow by Category"}
                 onCategoryClick={handleOutflowCategoryClick}
+                onSliceSelect={handleSliceSelect}
               />
             </div>
             <CategoryTrendChart
@@ -826,6 +1034,13 @@ export function CategoryAnalytics({
           </div>
         </div>
       )}
+      <CategoryTransactionsDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        category={dialogCategory}
+        transactions={dialogTransactions}
+        loading={dialogLoading}
+      />
     </div>
   )
 }

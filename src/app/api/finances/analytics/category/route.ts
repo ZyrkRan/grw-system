@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
               name: true,
               color: true,
               parentId: true,
+              isGroup: true,
               parent: { select: { id: true, name: true, color: true } },
             },
           },
@@ -106,6 +107,7 @@ export async function GET(request: NextRequest) {
               name: true,
               color: true,
               parentId: true,
+              isGroup: true,
               parent: { select: { id: true, name: true, color: true } },
             },
           },
@@ -153,18 +155,64 @@ export async function GET(request: NextRequest) {
       { id: number | null; name: string; color: string; value: number; count: number; parentId: number | null; isGroup: boolean }
     >()
     for (const tx of inflowRaw) {
-      const key = tx.categoryId ? String(tx.categoryId) : "uncategorized"
-      const name = tx.category?.name || "Uncategorized"
-      const color = tx.category?.color || "#10b981"
-      const id = tx.categoryId
-      const parentId = tx.category?.parentId || null
-      const existing = inflowByCat.get(key)
       const amt = Number(tx.amount)
-      if (existing) {
-        existing.value += amt
-        existing.count += 1
+
+      if (!tx.categoryId || !tx.category) {
+        // Uncategorized transaction
+        const existing = inflowByCat.get("uncategorized")
+        if (existing) {
+          existing.value += amt
+          existing.count += 1
+        } else {
+          inflowByCat.set("uncategorized", {
+            id: null, name: "Uncategorized", color: "#10b981",
+            value: amt, count: 1, parentId: null, isGroup: false,
+          })
+        }
+        continue
+      }
+
+      const cat = tx.category
+
+      if (cat.parentId !== null && cat.parent) {
+        // Child category: aggregate into parent group + keep as individual child
+        const parentKey = String(cat.parent.id)
+        const existingParent = inflowByCat.get(parentKey)
+        if (existingParent) {
+          existingParent.value += amt
+          existingParent.count += 1
+          existingParent.isGroup = true
+        } else {
+          inflowByCat.set(parentKey, {
+            id: cat.parent.id, name: cat.parent.name, color: cat.parent.color,
+            value: amt, count: 1, parentId: null, isGroup: true,
+          })
+        }
+
+        const childKey = `child-${cat.id}`
+        const existingChild = inflowByCat.get(childKey)
+        if (existingChild) {
+          existingChild.value += amt
+          existingChild.count += 1
+        } else {
+          inflowByCat.set(childKey, {
+            id: cat.id, name: cat.name, color: cat.color,
+            value: amt, count: 1, parentId: cat.parentId, isGroup: false,
+          })
+        }
       } else {
-        inflowByCat.set(key, { id, name, color, value: amt, count: 1, parentId, isGroup: false })
+        // Top-level category (no parent)
+        const key = String(cat.id)
+        const existing = inflowByCat.get(key)
+        if (existing) {
+          existing.value += amt
+          existing.count += 1
+        } else {
+          inflowByCat.set(key, {
+            id: cat.id, name: cat.name, color: cat.color,
+            value: amt, count: 1, parentId: null, isGroup: cat.isGroup ?? false,
+          })
+        }
       }
     }
     const inflowPieData = Array.from(inflowByCat.values())
@@ -177,18 +225,61 @@ export async function GET(request: NextRequest) {
       { id: number | null; name: string; color: string; value: number; count: number; parentId: number | null; isGroup: boolean }
     >()
     for (const tx of outflowRaw) {
-      const key = tx.categoryId ? String(tx.categoryId) : "uncategorized"
-      const name = tx.category?.name || "Uncategorized"
-      const color = tx.category?.color || "#ef4444"
-      const id = tx.categoryId
-      const parentId = tx.category?.parentId || null
-      const existing = outflowByCat.get(key)
       const amt = Number(tx.amount)
-      if (existing) {
-        existing.value += amt
-        existing.count += 1
+
+      if (!tx.categoryId || !tx.category) {
+        const existing = outflowByCat.get("uncategorized")
+        if (existing) {
+          existing.value += amt
+          existing.count += 1
+        } else {
+          outflowByCat.set("uncategorized", {
+            id: null, name: "Uncategorized", color: "#ef4444",
+            value: amt, count: 1, parentId: null, isGroup: false,
+          })
+        }
+        continue
+      }
+
+      const cat = tx.category
+
+      if (cat.parentId !== null && cat.parent) {
+        const parentKey = String(cat.parent.id)
+        const existingParent = outflowByCat.get(parentKey)
+        if (existingParent) {
+          existingParent.value += amt
+          existingParent.count += 1
+          existingParent.isGroup = true
+        } else {
+          outflowByCat.set(parentKey, {
+            id: cat.parent.id, name: cat.parent.name, color: cat.parent.color,
+            value: amt, count: 1, parentId: null, isGroup: true,
+          })
+        }
+
+        const childKey = `child-${cat.id}`
+        const existingChild = outflowByCat.get(childKey)
+        if (existingChild) {
+          existingChild.value += amt
+          existingChild.count += 1
+        } else {
+          outflowByCat.set(childKey, {
+            id: cat.id, name: cat.name, color: cat.color,
+            value: amt, count: 1, parentId: cat.parentId, isGroup: false,
+          })
+        }
       } else {
-        outflowByCat.set(key, { id, name, color, value: amt, count: 1, parentId, isGroup: false })
+        const key = String(cat.id)
+        const existing = outflowByCat.get(key)
+        if (existing) {
+          existing.value += amt
+          existing.count += 1
+        } else {
+          outflowByCat.set(key, {
+            id: cat.id, name: cat.name, color: cat.color,
+            value: amt, count: 1, parentId: null, isGroup: cat.isGroup ?? false,
+          })
+        }
       }
     }
     const outflowPieData = Array.from(outflowByCat.values())
