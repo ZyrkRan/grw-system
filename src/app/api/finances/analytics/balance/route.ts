@@ -125,7 +125,14 @@ export async function GET(request: NextRequest) {
     startDate = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
     endDate = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
   } else {
-    startDate = getStartDate(granularity)
+    // All Time: find earliest transaction date
+    const earliest = await prisma.bankTransaction.findFirst({
+      where: { userId },
+      orderBy: { date: "asc" },
+      select: { date: true },
+    })
+    startDate = earliest ? new Date(earliest.date) : getStartDate(granularity)
+    startDate.setHours(0, 0, 0, 0)
     endDate = new Date()
     endDate.setHours(23, 59, 59, 999)
   }

@@ -110,7 +110,7 @@ export default function FinancesPage() {
             <BalanceChart key={`bc-${syncVersion}`} accountId={selectedAccountId} timeframe={timeframe} compact />
           </div>
 
-          <TransactionsTable accountId={selectedAccountId} refreshKey={syncVersion} />
+          <TransactionsTable accountId={selectedAccountId} timeframe={timeframe} refreshKey={syncVersion} />
         </>
       )}
       {activeTab === "categories" && <CategoriesManager />}

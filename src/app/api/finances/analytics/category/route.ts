@@ -43,17 +43,22 @@ export async function GET(request: NextRequest) {
     months = Math.ceil(durationDays / 30) // Approximate months
     if (months < 1) months = 1
   } else {
-    // Use existing month/year/months parameters (backward compatibility)
-    const now = new Date()
-    const month = Math.min(12, Math.max(1, parseInt(searchParams.get("month") || String(now.getMonth() + 1), 10) || 1))
-    const year = Math.min(now.getFullYear() + 1, Math.max(2000, parseInt(searchParams.get("year") || String(now.getFullYear()), 10) || now.getFullYear()))
-    const monthsRaw = parseInt(searchParams.get("months") || "6", 10)
-    months = [3, 6, 12].includes(monthsRaw) ? monthsRaw : 6
+    // All Time: find earliest transaction date
+    const earliest = await prisma.bankTransaction.findFirst({
+      where: { userId },
+      orderBy: { date: "asc" },
+      select: { date: true },
+    })
+    selectedMonthStart = earliest ? new Date(earliest.date) : new Date()
+    selectedMonthStart.setHours(0, 0, 0, 0)
+    selectedMonthEnd = new Date()
+    selectedMonthEnd.setHours(23, 59, 59, 999)
+    trendStart = new Date(selectedMonthStart)
 
-    // Calculate the trend range start date
-    trendStart = new Date(year, month - 1 - (months - 1), 1)
-    selectedMonthStart = new Date(year, month - 1, 1)
-    selectedMonthEnd = new Date(year, month, 1)
+    const durationMs = selectedMonthEnd.getTime() - selectedMonthStart.getTime()
+    const durationDays = durationMs / (1000 * 60 * 60 * 24)
+    months = Math.ceil(durationDays / 30)
+    if (months < 1) months = 1
   }
 
   const baseWhere = {

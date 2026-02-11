@@ -146,10 +146,8 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
-      if (timeframe) {
-        params.set("dateFrom", timeframe.dateFrom)
-        params.set("dateTo", timeframe.dateTo)
-      }
+      if (timeframe?.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+      if (timeframe?.dateTo) params.set("dateTo", timeframe.dateTo)
       // Use server-side pagination with a large page size so
       // client-side DataTable pagination still works as before
       params.set("pageSize", "250")

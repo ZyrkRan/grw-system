@@ -138,6 +138,7 @@ export function BalanceChart({
 
   // Auto-calculate granularity based on timeframe duration
   const granularity: Granularity = (() => {
+    if (!timeframe.dateFrom || !timeframe.dateTo) return "monthly"
     const fromDate = new Date(timeframe.dateFrom)
     const toDate = new Date(timeframe.dateTo)
     const durationMs = toDate.getTime() - fromDate.getTime()
@@ -222,12 +223,9 @@ export function BalanceChart({
       // Fetch data for all selected accounts in parallel
       const results = await Promise.all(
         selectedAccountIds.map(async (accId) => {
-          const params = new URLSearchParams({
-            granularity,
-            dateFrom: timeframe.dateFrom,
-            dateTo: timeframe.dateTo,
-            accountId: String(accId),
-          })
+          const params = new URLSearchParams({ granularity, accountId: String(accId) })
+          if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+          if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
           const res = await fetch(`/api/finances/analytics/balance?${params}`)
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           const result = await res.json()
@@ -274,11 +272,9 @@ export function BalanceChart({
     setLoading(true)
     setError(false)
     try {
-      const params = new URLSearchParams({
-        granularity,
-        dateFrom: timeframe.dateFrom,
-        dateTo: timeframe.dateTo,
-      })
+      const params = new URLSearchParams({ granularity })
+      if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+      if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
@@ -467,7 +463,7 @@ export function BalanceChart({
               <div className={cn(compactOpen ? "block" : "hidden md:block")}>
                 <Separator className="mb-3" />
                 <ChartContainer config={balanceChartConfig} className="h-[200px] w-full">
-                  <LineChart accessibilityLayer data={data.points}>
+                  <LineChart accessibilityLayer data={data.points} margin={{ right: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis
                       dataKey="label"
@@ -479,7 +475,7 @@ export function BalanceChart({
                       tickFormatter={(v: number) => formatCurrency(v)}
                       axisLine={false}
                       tickLine={false}
-                      width={60}
+                      width={50}
                       tick={{ fontSize: 11 }}
                     />
                     <ChartTooltip

@@ -102,32 +102,36 @@ export async function GET(request: NextRequest) {
   const userId = session.user!.id!
   const searchParams = request.nextUrl.searchParams
 
-  // Parse required date parameters
+  // Parse optional date parameters
   const dateFromParam = searchParams.get("dateFrom")
   const dateToParam = searchParams.get("dateTo")
 
-  if (!dateFromParam || !dateToParam) {
-    return NextResponse.json(
-      { success: false, error: "dateFrom and dateTo are required" },
-      { status: 400 }
-    )
-  }
+  let startDate: Date
+  let endDate: Date
 
-  // Parse date strings in local timezone to avoid UTC offset issues
-  const [fromYear, fromMonth, fromDay] = dateFromParam.split("-").map(Number)
-  const [toYear, toMonth, toDay] = dateToParam.split("-").map(Number)
-  const startDate = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
-  const endDate = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
+  if (dateFromParam && dateToParam) {
+    const [fromYear, fromMonth, fromDay] = dateFromParam.split("-").map(Number)
+    const [toYear, toMonth, toDay] = dateToParam.split("-").map(Number)
+    startDate = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
+    endDate = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
 
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    return NextResponse.json({ success: false, error: "Invalid date format" }, { status: 400 })
-  }
-
-  if (endDate < startDate) {
-    return NextResponse.json(
-      { success: false, error: "dateTo must be after dateFrom" },
-      { status: 400 }
-    )
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return NextResponse.json({ success: false, error: "Invalid date format" }, { status: 400 })
+    }
+    if (endDate < startDate) {
+      return NextResponse.json({ success: false, error: "dateTo must be after dateFrom" }, { status: 400 })
+    }
+  } else {
+    // All Time: find earliest transaction date
+    const earliest = await prisma.bankTransaction.findFirst({
+      where: { userId },
+      orderBy: { date: "asc" },
+      select: { date: true },
+    })
+    startDate = earliest ? new Date(earliest.date) : new Date()
+    startDate.setHours(0, 0, 0, 0)
+    endDate = new Date()
+    endDate.setHours(23, 59, 59, 999)
   }
 
   // Parse optional account ID

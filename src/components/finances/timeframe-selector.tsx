@@ -5,7 +5,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { cn } from "@/lib/utils"
 import { useState, useMemo } from "react"
 
-export type TimeframePreset = "month" | "3months" | "custom"
+export type TimeframePreset = "all" | "month" | "3months" | "custom"
 
 export interface TimeframeValue {
   preset: TimeframePreset
@@ -24,6 +24,9 @@ export function getTimeframeValue(preset: TimeframePreset): TimeframeValue {
   const todayStr = today.toISOString().split("T")[0]
 
   switch (preset) {
+    case "all":
+      return { preset: "all", dateFrom: "", dateTo: "" }
+
     case "month": {
       // Start of this month to today
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -72,6 +75,7 @@ export function formatTimeframeLabel(timeframe: TimeframeValue): string {
 }
 
 const presets: Array<{ value: TimeframePreset; label: string }> = [
+  { value: "all", label: "All Time" },
   { value: "month", label: "This Month" },
   { value: "3months", label: "Past 3 Months" },
   { value: "custom", label: "Custom" },

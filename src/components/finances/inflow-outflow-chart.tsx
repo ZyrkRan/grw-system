@@ -136,10 +136,9 @@ export function InflowOutflowChart({
     setLoading(true)
     setError(false)
     try {
-      const params = new URLSearchParams({
-        dateFrom: timeframe.dateFrom,
-        dateTo: timeframe.dateTo,
-      })
+      const params = new URLSearchParams()
+      if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+      if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
