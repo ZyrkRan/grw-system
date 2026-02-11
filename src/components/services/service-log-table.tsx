@@ -26,9 +26,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { DueStatusBadge } from "@/components/ui/due-status-badge"
 import { ServiceFormDialog } from "@/components/services/service-form-dialog"
 import { ServiceDetailDialog } from "@/components/services/service-detail-dialog"
 import { LucideIcon } from "@/components/ui/lucide-icon"
+import type { DueStatus } from "@/lib/due-date"
 
 interface ServiceLog {
   id: number
@@ -43,7 +45,12 @@ interface ServiceLog {
   paymentDate: string | null
   serviceTypeId: number | null
   totalDurationMinutes: number | null
-  customer: { id: number; name: string }
+  customer: {
+    id: number
+    name: string
+    daysUntilDue: number | null
+    dueStatus: DueStatus
+  }
   serviceType: { id: number; name: string; icon: string | null } | null
   timeEntries: Array<{
     id: number
@@ -194,7 +201,10 @@ export function ServiceLogTable() {
       sortValue: (row) => row.customer.name,
       filterValue: (row) => row.customer.name,
       render: (_, row) => (
-        <span className="font-medium">{row.customer.name}</span>
+        <span className="flex items-center gap-2">
+          <span className="font-medium">{row.customer.name}</span>
+          <DueStatusBadge daysUntilDue={row.customer.daysUntilDue} dueStatus={row.customer.dueStatus} />
+        </span>
       ),
     },
     {

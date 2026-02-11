@@ -20,8 +20,10 @@ import {
 } from "@/components/ui/dialog"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { Badge } from "@/components/ui/badge"
+import { DueStatusBadge } from "@/components/ui/due-status-badge"
 import { cn } from "@/lib/utils"
 import { CustomerDialog } from "@/components/customers/customer-dialog"
+import type { DueStatus } from "@/lib/due-date"
 
 interface Customer {
   id: number
@@ -34,6 +36,9 @@ interface Customer {
   _count: {
     serviceLogs: number
   }
+  nextDueDate: string | null
+  daysUntilDue: number | null
+  dueStatus: DueStatus
 }
 
 export default function CustomersPage() {
@@ -235,8 +240,13 @@ export default function CustomersPage() {
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
               {match ? (
                 <Badge
-                  variant="secondary"
-                  className="cursor-pointer hover:bg-secondary/80"
+                  variant="outline"
+                  className={cn(
+                    "cursor-pointer",
+                    match.value === 14 && "border-blue-500 text-blue-600 hover:bg-blue-500/10",
+                    match.value === 21 && "border-violet-500 text-violet-600 hover:bg-violet-500/10",
+                    match.value === 28 && "border-emerald-500 text-emerald-600 hover:bg-emerald-500/10",
+                  )}
                 >
                   {match.label}
                 </Badge>
@@ -274,6 +284,24 @@ export default function CustomersPage() {
           </DropdownMenu>
         )
       },
+    },
+    {
+      key: "dueStatus",
+      label: "Status",
+      filterable: true,
+      filterValue: (row) => {
+        switch (row.dueStatus) {
+          case "late": return "Late"
+          case "due-today": return "Due Today"
+          case "due-soon": return "Due Soon"
+          case "on-track": return "On Track"
+          default: return "No Schedule"
+        }
+      },
+      sortValue: (row) => row.daysUntilDue ?? 999999,
+      render: (_, row) => (
+        <DueStatusBadge daysUntilDue={row.daysUntilDue} dueStatus={row.dueStatus} />
+      ),
     },
     {
       key: "_count",

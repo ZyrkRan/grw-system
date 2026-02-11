@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ServiceStatus, PaymentStatus } from "@/generated/prisma"
+import { computeDueDateInfo } from "@/lib/due-date"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -65,7 +66,16 @@ export async function GET(request: NextRequest) {
       orderBy: { serviceDate: "desc" },
       include: {
         customer: {
-          select: { id: true, name: true },
+          select: {
+            id: true,
+            name: true,
+            serviceInterval: true,
+            serviceLogs: {
+              orderBy: { serviceDate: "desc" as const },
+              take: 1,
+              select: { serviceDate: true },
+            },
+          },
         },
         serviceType: {
           select: { id: true, name: true, icon: true },
@@ -77,7 +87,16 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ success: true, data: serviceLogs })
+    const data = serviceLogs.map((log) => {
+      const { serviceLogs: custLogs, serviceInterval, ...custRest } = log.customer
+      const dueInfo = computeDueDateInfo(custLogs[0]?.serviceDate, serviceInterval)
+      return {
+        ...log,
+        customer: { ...custRest, ...dueInfo },
+      }
+    })
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error("Failed to fetch service logs:", error)
     return NextResponse.json(

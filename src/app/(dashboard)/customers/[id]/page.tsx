@@ -20,6 +20,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { DueStatusBadge } from "@/components/ui/due-status-badge"
+import { computeDueDateInfo } from "@/lib/due-date"
 import { CustomerEditButton } from "@/components/customers/customer-edit-button"
 
 interface CustomerDetailPageProps {
@@ -64,6 +66,11 @@ export default async function CustomerDetailPage({
     notFound()
   }
 
+  const dueInfo = computeDueDateInfo(
+    customer.serviceLogs[0]?.serviceDate,
+    customer.serviceInterval
+  )
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -82,6 +89,7 @@ export default async function CustomerDetailPage({
                 VIP
               </Badge>
             )}
+            <DueStatusBadge daysUntilDue={dueInfo.daysUntilDue} dueStatus={dueInfo.dueStatus} />
           </div>
         </div>
         <CustomerEditButton

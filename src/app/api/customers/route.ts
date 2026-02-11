@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { computeDueDateInfo } from "@/lib/due-date"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -34,10 +35,23 @@ export async function GET(request: NextRequest) {
         _count: {
           select: { serviceLogs: true },
         },
+        serviceLogs: {
+          orderBy: { serviceDate: "desc" },
+          take: 1,
+          select: { serviceDate: true },
+        },
       },
     })
 
-    return NextResponse.json({ success: true, data: customers })
+    const data = customers.map(({ serviceLogs, ...customer }) => {
+      const dueInfo = computeDueDateInfo(
+        serviceLogs[0]?.serviceDate,
+        customer.serviceInterval
+      )
+      return { ...customer, ...dueInfo }
+    })
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error("Failed to fetch customers:", error)
     return NextResponse.json(
