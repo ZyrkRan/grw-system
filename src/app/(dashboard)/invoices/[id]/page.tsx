@@ -71,8 +71,11 @@ export default async function InvoiceDetailPage({
   params,
 }: InvoiceDetailPageProps) {
   const session = await auth()
+
+  // Dashboard layout ensures we're authenticated
+  // If session is missing here, something is wrong - show 404 instead of redirecting
   if (!session?.user?.id) {
-    redirect("/login")
+    notFound()
   }
 
   const { id } = await params

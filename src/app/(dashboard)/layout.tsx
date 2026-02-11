@@ -21,12 +21,15 @@ export default async function DashboardLayout({
   }
 
   return (
-    <SidebarProvider className="h-svh !min-h-0">
+    <SidebarProvider
+      className="h-svh !min-h-0"
+      style={{ "--sidebar-width-icon": "4rem" } as React.CSSProperties}
+    >
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
+          <SidebarTrigger className="-ml-1 md:hidden" />
+          <Separator orientation="vertical" className="mr-2 h-4 md:hidden" />
           <div className="ml-auto">
             <ThemeToggle />
           </div>

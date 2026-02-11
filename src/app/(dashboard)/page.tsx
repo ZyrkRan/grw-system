@@ -282,11 +282,11 @@ export default function DashboardPage() {
           <CardContent>
             {isLoading ? (
               <div className="flex items-end gap-3 h-48">
-                {Array.from({ length: 6 }).map((_, i) => (
+                {[65, 45, 80, 55, 90, 70].map((h, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center gap-2">
                     <Skeleton
                       className="w-full"
-                      style={{ height: `${40 + Math.random() * 60}%` }}
+                      style={{ height: `${h}%` }}
                     />
                     <Skeleton className="h-3 w-8" />
                   </div>

@@ -12,6 +12,7 @@ import {
   Settings,
   LogOut,
   ChevronsUpDown,
+  ChevronLeft,
 } from "lucide-react"
 
 import {
@@ -20,11 +21,11 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   DropdownMenu,
@@ -43,6 +44,24 @@ const navItems = [
   { title: "Settings", url: "/settings", icon: Settings },
 ]
 
+function SidebarToggle() {
+  const { toggleSidebar, state } = useSidebar()
+
+  return (
+    <button
+      onClick={toggleSidebar}
+      className="absolute top-7 -right-3 z-20 hidden h-6 w-6 items-center justify-center rounded-full border bg-sidebar shadow-sm transition-colors hover:bg-sidebar-accent md:flex"
+      aria-label={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+    >
+      <ChevronLeft
+        className={`h-3.5 w-3.5 transition-transform duration-200 ${
+          state === "collapsed" ? "rotate-180" : ""
+        }`}
+      />
+    </button>
+  )
+}
+
 export function AppSidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
@@ -60,9 +79,36 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
-        <span className="text-lg font-bold tracking-tight">GRW CRM</span>
+    <Sidebar collapsible="icon">
+      <SidebarToggle />
+
+      <SidebarHeader className="border-b px-4 py-5">
+        {/* Full logo — visible when expanded */}
+        <div className="flex justify-center group-data-[collapsible=icon]:hidden">
+          <img
+            src="/logo.png"
+            alt="GRW"
+            className="h-12 w-auto dark:hidden"
+          />
+          <img
+            src="/logo-dark.png"
+            alt="GRW"
+            className="hidden h-12 w-auto dark:block"
+          />
+        </div>
+        {/* Icon logo — visible when collapsed */}
+        <div className="hidden items-center justify-center group-data-[collapsible=icon]:flex">
+          <img
+            src="/logo-icon.png"
+            alt="GRW"
+            className="size-7 dark:hidden"
+          />
+          <img
+            src="/logo-icon-dark.png"
+            alt="GRW"
+            className="hidden size-7 dark:block"
+          />
+        </div>
       </SidebarHeader>
 
       <SidebarContent>
@@ -77,10 +123,16 @@ export function AppSidebar() {
 
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} size="lg">
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      size="lg"
+                      tooltip={item.title}
+                      className="group-data-[collapsible=icon]:!size-10 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:justify-center"
+                    >
                       <Link href={item.url}>
-                        <item.icon className="size-5" />
-                        <span>{item.title}</span>
+                        <item.icon className="size-5 group-data-[collapsible=icon]:!size-6" />
+                        <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
