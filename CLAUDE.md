@@ -20,4 +20,4 @@ Ask clarifying questions before starting work when the request is ambiguous, has
 When in plan mode or discussing implementation plans, keep explanations simple and concise. Do not include code snippets or technical implementation details unless specifically requested. Focus on high-level approach and strategy.
 
 ## Git Commits
-Auto-commit after completing significant features. Triggers: "commit" you decide best way to commit OR "commit this" (single feature) or "commit all" (commit everything, group if necessary). Use conventional commits (`feat:`, `fix:`, `refactor:`, `chore:`) with concise summaries. Group related changes; keep commits focused and cohesive.
+Auto-commit after completing significant features. Triggers: "commit" commit the most recent changes/features OR "commit all" (commit everything, group if necessary). Use conventional commits (`feat:`, `fix:`, `refactor:`, `chore:`) with concise summaries. Group related changes; keep commits focused and cohesive.
