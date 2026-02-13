@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { computeDueDateInfo } from "@/lib/due-date"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -87,9 +88,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }),
         ...(isVip !== undefined && { isVip: isVip === true }),
       },
+      include: {
+        serviceLogs: {
+          orderBy: { serviceDate: "desc" as const },
+          take: 1,
+          select: { serviceDate: true },
+        },
+      },
     })
 
-    return NextResponse.json({ success: true, data: customer })
+    const { serviceLogs, ...rest } = customer
+    const dueInfo = computeDueDateInfo(
+      serviceLogs[0]?.serviceDate,
+      rest.serviceInterval
+    )
+
+    return NextResponse.json({ success: true, data: { ...rest, ...dueInfo } })
   } catch (error) {
     console.error("Failed to update customer:", error)
     return NextResponse.json(

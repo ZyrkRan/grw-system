@@ -164,7 +164,7 @@ export default function CustomersPage() {
   ] as const
 
   async function setInterval(customer: Customer, interval: number | null) {
-    const prev = customer.serviceInterval
+    const prev = { serviceInterval: customer.serviceInterval, daysUntilDue: customer.daysUntilDue, dueStatus: customer.dueStatus, nextDueDate: customer.nextDueDate }
     setCustomers((cs) =>
       cs.map((c) => (c.id === customer.id ? { ...c, serviceInterval: interval } : c))
     )
@@ -175,14 +175,19 @@ export default function CustomersPage() {
         body: JSON.stringify({ serviceInterval: interval }),
       })
       const result = await res.json()
-      if (!result.success) {
+      if (result.success) {
+        const { daysUntilDue, dueStatus, nextDueDate } = result.data
         setCustomers((cs) =>
-          cs.map((c) => (c.id === customer.id ? { ...c, serviceInterval: prev } : c))
+          cs.map((c) => (c.id === customer.id ? { ...c, daysUntilDue, dueStatus, nextDueDate } : c))
+        )
+      } else {
+        setCustomers((cs) =>
+          cs.map((c) => (c.id === customer.id ? { ...c, ...prev } : c))
         )
       }
     } catch {
       setCustomers((cs) =>
-        cs.map((c) => (c.id === customer.id ? { ...c, serviceInterval: prev } : c))
+        cs.map((c) => (c.id === customer.id ? { ...c, ...prev } : c))
       )
     }
   }
