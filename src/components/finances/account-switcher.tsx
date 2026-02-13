@@ -427,7 +427,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-[240px] justify-between shrink-0"
+            className="w-full sm:w-[240px] justify-between shrink-0"
           >
             {isLoading ? (
               <span className="text-muted-foreground text-sm">Loading...</span>
@@ -444,7 +444,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
             <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[420px] p-0" align="end" sideOffset={8}>
+        <PopoverContent className="w-[calc(100vw-2rem)] sm:w-[420px] p-0" align="end" sideOffset={8}>
           <div className="flex items-center justify-between px-3 py-2 border-b">
             <span className="text-sm font-medium">Accounts</span>
             <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>

@@ -359,8 +359,8 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Invoices</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl sm:text-3xl font-bold">Invoices</h1>
         <Button onClick={handleCreateInvoice}>
           <Plus className="mr-2 size-4" />
           Create Invoice

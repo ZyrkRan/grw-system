@@ -143,7 +143,7 @@ export default async function InvoiceDetailPage({
       </div>
 
       {/* Invoice Document */}
-      <div className="mx-auto max-w-3xl rounded-lg border bg-card p-8 shadow-sm print:border-none print:shadow-none print:p-0 print:max-w-none">
+      <div className="mx-auto max-w-3xl rounded-lg border bg-card p-4 sm:p-8 shadow-sm print:border-none print:shadow-none print:p-0 print:max-w-none">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -160,7 +160,7 @@ export default async function InvoiceDetailPage({
         <Separator className="my-6" />
 
         {/* Company and Customer Info */}
-        <div className="grid grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8">
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1">
               From
@@ -215,7 +215,7 @@ export default async function InvoiceDetailPage({
         </div>
 
         {/* Line Items */}
-        <div className="mt-8 rounded-md border">
+        <div className="mt-8 rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>

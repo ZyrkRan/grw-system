@@ -162,7 +162,7 @@ export function TimeframeSelector({ value, onChange }: TimeframeSelectorProps) {
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         {/* Preset buttons */}
-        <div className="flex rounded-md border border-input">
+        <div className="flex rounded-md border border-input overflow-x-auto">
           {presets.map((preset) => (
             <Button
               key={preset.value}

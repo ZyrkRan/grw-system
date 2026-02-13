@@ -118,7 +118,7 @@ export default function RouteDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
         <Button variant="ghost" size="icon" onClick={() => router.push("/routes")}>
           <ArrowLeft className="size-4" />
         </Button>

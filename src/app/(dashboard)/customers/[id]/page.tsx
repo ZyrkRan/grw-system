@@ -73,15 +73,15 @@ export default async function CustomerDetailPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/customers">
             <ArrowLeft className="size-4" />
             <span className="sr-only">Back to Customers</span>
           </Link>
         </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <h1 className="text-3xl font-bold">{customer.name}</h1>
             {customer.isVip && (
               <Badge variant="secondary" className="gap-1">
@@ -166,7 +166,7 @@ export default async function CustomerDetailPage({
               No service logs yet. Go to Services to log work for this customer.
             </p>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -235,7 +235,7 @@ export default async function CustomerDetailPage({
               No invoices yet. Go to Invoices to create one for this customer.
             </p>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

@@ -227,7 +227,7 @@ export default function DashboardPage() {
                 {data.recentActivity.map((activity) => (
                   <div
                     key={activity.id}
-                    className="flex items-center justify-between gap-4 border-b pb-3 last:border-0 last:pb-0"
+                    className="flex flex-wrap items-center justify-between gap-2 sm:gap-4 border-b pb-3 last:border-0 last:pb-0"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-none">
