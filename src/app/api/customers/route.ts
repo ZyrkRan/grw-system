@@ -38,12 +38,18 @@ export async function GET(request: NextRequest) {
         serviceLogs: {
           orderBy: { serviceDate: "desc" },
           take: 1,
-          select: { serviceDate: true },
+          select: {
+            serviceDate: true,
+            serviceName: true,
+            priceCharged: true,
+            serviceTypeId: true,
+            serviceType: { select: { id: true, name: true, icon: true } },
+          },
         },
         routeCustomers: {
           select: {
             route: {
-              select: { name: true, color: true },
+              select: { id: true, name: true, color: true },
             },
           },
         },
@@ -51,14 +57,23 @@ export async function GET(request: NextRequest) {
     })
 
     const data = customers.map(({ serviceLogs, routeCustomers, ...customer }) => {
+      const lastLog = serviceLogs[0]
       const dueInfo = computeDueDateInfo(
-        serviceLogs[0]?.serviceDate,
+        lastLog?.serviceDate,
         customer.serviceInterval
       )
       return {
         ...customer,
         ...dueInfo,
         routes: routeCustomers.map((rc) => rc.route),
+        lastService: lastLog
+          ? {
+              serviceName: lastLog.serviceName,
+              priceCharged: Number(lastLog.priceCharged),
+              serviceTypeId: lastLog.serviceTypeId,
+              serviceType: lastLog.serviceType,
+            }
+          : null,
       }
     })
 

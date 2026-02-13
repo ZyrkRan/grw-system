@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, MoreHorizontal, Pencil, Trash2, Loader2, Star, Route } from "lucide-react"
+import { Plus, MoreHorizontal, Pencil, Trash2, Loader2, Star, Check, Route as RouteIcon, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -23,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { DueStatusBadge } from "@/components/ui/due-status-badge"
 import { cn } from "@/lib/utils"
 import { CustomerDialog } from "@/components/customers/customer-dialog"
+import { ServiceFormDialog } from "@/components/services/service-form-dialog"
 import type { DueStatus } from "@/lib/due-date"
 
 interface Customer {
@@ -39,12 +41,25 @@ interface Customer {
   nextDueDate: string | null
   daysUntilDue: number | null
   dueStatus: DueStatus
-  routes: { name: string; color: string | null }[]
+  routes: { id: number; name: string; color: string | null }[]
+  lastService: {
+    serviceName: string
+    priceCharged: number
+    serviceTypeId: number | null
+    serviceType: { id: number; name: string; icon: string | null } | null
+  } | null
+}
+
+interface RouteOption {
+  id: number
+  name: string
+  color: string | null
 }
 
 export default function CustomersPage() {
   const router = useRouter()
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [allRoutes, setAllRoutes] = useState<RouteOption[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>(
@@ -54,6 +69,10 @@ export default function CustomersPage() {
   const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Customer[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false)
+  const [quickAddService, setQuickAddService] = useState<
+    { customerId: number; serviceTypeId: number | null; serviceName: string; serviceDate: string; priceCharged: number | string; notes: null; status: string; paymentStatus: string; amountPaid: null; paymentDate: null } | undefined
+  >(undefined)
 
   const fetchCustomers = useCallback(async () => {
     setIsLoading(true)
@@ -71,9 +90,22 @@ export default function CustomersPage() {
     }
   }, [])
 
+  const fetchRoutes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/routes")
+      const result = await res.json()
+      if (result.success) {
+        setAllRoutes(result.data.map((r: RouteOption) => ({ id: r.id, name: r.name, color: r.color })))
+      }
+    } catch {
+      console.error("Failed to fetch routes")
+    }
+  }, [])
+
   useEffect(() => {
     fetchCustomers()
-  }, [fetchCustomers])
+    fetchRoutes()
+  }, [fetchCustomers, fetchRoutes])
 
   function handleAddCustomer() {
     setEditingCustomer(undefined)
@@ -129,6 +161,23 @@ export default function CustomersPage() {
 
   function handleDialogSuccess() {
     fetchCustomers()
+  }
+
+  function handleQuickAdd(customer: Customer) {
+    const ls = customer.lastService
+    setQuickAddService({
+      customerId: customer.id,
+      serviceTypeId: ls?.serviceTypeId ?? null,
+      serviceName: ls?.serviceName ?? "",
+      serviceDate: new Date().toISOString(),
+      priceCharged: ls ? ls.priceCharged : "",
+      notes: null,
+      status: "PENDING",
+      paymentStatus: "UNPAID",
+      amountPaid: null,
+      paymentDate: null,
+    })
+    setServiceDialogOpen(true)
   }
 
   async function toggleVip(customer: Customer) {
@@ -193,6 +242,45 @@ export default function CustomersPage() {
     }
   }
 
+  async function toggleRoute(customer: Customer, route: RouteOption) {
+    const isAssigned = customer.routes.some((r) => r.id === route.id)
+    const prevRoutes = customer.routes
+
+    // Optimistic update
+    setCustomers((cs) =>
+      cs.map((c) =>
+        c.id === customer.id
+          ? {
+              ...c,
+              routes: isAssigned
+                ? c.routes.filter((r) => r.id !== route.id)
+                : [...c.routes, { id: route.id, name: route.name, color: route.color }],
+            }
+          : c
+      )
+    )
+
+    try {
+      const res = isAssigned
+        ? await fetch(`/api/routes/${route.id}/customers/${customer.id}`, { method: "DELETE" })
+        : await fetch(`/api/routes/${route.id}/customers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ customerId: customer.id }),
+          })
+      const result = await res.json()
+      if (!result.success) {
+        setCustomers((cs) =>
+          cs.map((c) => (c.id === customer.id ? { ...c, routes: prevRoutes } : c))
+        )
+      }
+    } catch {
+      setCustomers((cs) =>
+        cs.map((c) => (c.id === customer.id ? { ...c, routes: prevRoutes } : c))
+      )
+    }
+  }
+
   const customerColumns: ColumnDef<Customer>[] = [
     {
       key: "isVip",
@@ -225,27 +313,77 @@ export default function CustomersPage() {
       key: "name",
       label: "Name",
       render: (_, customer) => (
-        <div>
+        <div className="min-w-0">
           <span className="font-medium">{customer.name}</span>
-          {customer.routes.length > 0 && (
-            <p className="flex items-center gap-1 text-xs truncate max-w-48">
-              <Route className="size-3 shrink-0" style={customer.routes[0]?.color ? { color: customer.routes[0].color } : undefined} />
-              {customer.routes.map((r, i) => (
-                <span key={r.name}>
-                  {i > 0 && <span className="text-muted-foreground">, </span>}
-                  <span style={r.color ? { color: r.color } : undefined} className={r.color ? undefined : "text-muted-foreground"}>
-                    {r.name}
-                  </span>
-                </span>
-              ))}
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground truncate max-w-64">{customer.address}</p>
         </div>
       ),
     },
-    { key: "phone", label: "Phone" },
+    {
+      key: "routes",
+      label: "Routes",
+      filterable: true,
+      filterValue: (row) => row.routes.length > 0 ? row.routes.map((r) => r.name).join(", ") : "None",
+      render: (_, customer) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            {customer.routes.length > 0 ? (
+              <button type="button" className="flex items-center gap-1.5 flex-wrap cursor-pointer hover:opacity-80 transition-opacity">
+                {customer.routes.map((r) => (
+                  <span
+                    key={r.id}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium w-32 bg-secondary text-secondary-foreground border border-foreground/10 dark:border-foreground/15"
+                  >
+                    <RouteIcon className="size-3 shrink-0" style={r.color ? { color: r.color } : undefined} />
+                    <span className="truncate">{r.name}</span>
+                  </span>
+                ))}
+              </button>
+            ) : (
+              <button type="button" className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">No route</button>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+            {allRoutes.length === 0 ? (
+              <DropdownMenuItem disabled>No routes available</DropdownMenuItem>
+            ) : (
+              <>
+                <DropdownMenuItem
+                  onClick={() => customer.routes.forEach((r) => toggleRoute(customer, r))}
+                  disabled={customer.routes.length === 0}
+                >
+                  <span className="flex items-center gap-2 w-full">
+                    <span className="flex-1 text-muted-foreground">No route</span>
+                    {customer.routes.length === 0 && <Check className="size-4 text-primary" />}
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {allRoutes.map((route) => {
+                  const isAssigned = customer.routes.some((r) => r.id === route.id)
+                  return (
+                    <DropdownMenuItem
+                      key={route.id}
+                      onClick={() => toggleRoute(customer, route)}
+                    >
+                      <span className="flex items-center gap-2 w-full">
+                        <span
+                          className="inline-block size-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: route.color || "var(--muted)" }}
+                        />
+                        <span className="flex-1">{route.name}</span>
+                        {isAssigned && <Check className="size-4 text-primary" />}
+                      </span>
+                    </DropdownMenuItem>
+                  )
+                })}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+    { key: "phone", label: "Phone", render: (v) => <span className="tabular-nums">{v as string}</span> },
     { key: "email", label: "Email", render: (v) => (v as string) || <span className="text-muted-foreground">--</span> },
-    { key: "address", label: "Address", render: (v) => <span className="max-w-48 truncate block">{v as string}</span> },
     {
       key: "serviceInterval",
       label: "Interval",
@@ -272,12 +410,7 @@ export default function CustomersPage() {
                   {match.label}
                 </Badge>
               ) : (
-                <Badge
-                  variant="outline"
-                  className="cursor-pointer text-muted-foreground hover:bg-accent"
-                >
-                  None
-                </Badge>
+                <button type="button" className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors">--</button>
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
@@ -328,48 +461,65 @@ export default function CustomersPage() {
       key: "_count",
       label: "Services",
       sortValue: (row) => row._count.serviceLogs,
-      render: (_, row) => row._count.serviceLogs,
+      render: (_, row) => (
+        <Badge variant="secondary">{row._count.serviceLogs}</Badge>
+      ),
     },
     {
       key: "_actions",
       label: "",
       pinned: true,
-      className: "w-12",
+      className: "w-20",
       render: (_, customer) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal className="size-4" />
-              <span className="sr-only">Actions</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                handleEditCustomer(customer)
-              }}
-            >
-              <Pencil className="mr-2 size-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleDeleteClick(customer)
-              }}
-            >
-              <Trash2 className="mr-2 size-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleQuickAdd(customer)
+            }}
+            title="Quick-add service"
+          >
+            <Zap className="size-4" />
+            <span className="sr-only">Quick-add service</span>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="size-4" />
+                <span className="sr-only">Actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleEditCustomer(customer)
+                }}
+              >
+                <Pencil className="mr-2 size-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDeleteClick(customer)
+                }}
+              >
+                <Trash2 className="mr-2 size-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       ),
     },
   ]
@@ -418,6 +568,13 @@ export default function CustomersPage() {
         onOpenChange={setDialogOpen}
         customer={editingCustomer}
         onSuccess={handleDialogSuccess}
+      />
+
+      <ServiceFormDialog
+        open={serviceDialogOpen}
+        onOpenChange={setServiceDialogOpen}
+        service={quickAddService}
+        onSuccess={fetchCustomers}
       />
 
       <Dialog
