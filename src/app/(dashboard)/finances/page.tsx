@@ -60,16 +60,14 @@ export default function FinancesPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold">Finances</h1>
-          {activeTab === "transactions" && (
-            <AccountSwitcher
-              selectedAccountId={selectedAccountId}
-              onAccountChange={handleAccountChange}
-              onSync={handleSync}
-            />
-          )}
-        </div>
+        <h1 className="text-3xl font-bold">Finances</h1>
+        {activeTab === "transactions" && (
+          <AccountSwitcher
+            selectedAccountId={selectedAccountId}
+            onAccountChange={handleAccountChange}
+            onSync={handleSync}
+          />
+        )}
       </div>
 
       <div className="flex gap-1 border-b overflow-x-auto">

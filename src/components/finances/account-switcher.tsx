@@ -397,9 +397,30 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
   }
 
   const selectedAccount = accounts.find((acc) => String(acc.id) === selectedAccountId)
+  const canSyncSelected = selectedAccount?.plaidItemId && selectedAccount?.plaidItem?.status !== "LOGIN_REQUIRED"
+  const selectedKey = selectedAccount ? String(selectedAccount.id) : ""
+  const isSyncingSelected = selectedKey ? syncingAccounts.has(selectedKey) : false
+  const selectedCooldown = selectedKey ? syncCooldowns[selectedKey] : undefined
 
   return (
     <>
+      <div className="flex items-center gap-2">
+        {canSyncSelected && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={(e) => selectedAccount && handleSync(selectedAccount, e)}
+            disabled={isSyncingSelected || !!selectedCooldown}
+            title={isSyncingSelected ? "Syncing..." : selectedCooldown ? `Wait ${selectedCooldown}s` : "Sync account"}
+          >
+            {isSyncingSelected ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+          </Button>
+        )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -423,7 +444,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
             <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[420px] p-0" align="start" sideOffset={8}>
+        <PopoverContent className="w-[420px] p-0" align="end" sideOffset={8}>
           <div className="flex items-center justify-between px-3 py-2 border-b">
             <span className="text-sm font-medium">Accounts</span>
             <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
@@ -578,25 +599,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
 
                           {/* Action Buttons (right side) */}
                           <div className="flex items-start gap-1 shrink-0 pt-0.5">
-                            {/* Sync/Import Button */}
-                            {!needsReconnect && isPlaid && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => handleSync(account, e)}
-                                disabled={isSyncing || !!cooldown}
-                                className="h-7 px-2 text-xs whitespace-nowrap"
-                                title={isSyncing ? "Syncing..." : cooldown ? `Wait ${cooldown}s` : "Sync account"}
-                              >
-                                {isSyncing ? (
-                                  <RefreshCw className="size-3 animate-spin" />
-                                ) : cooldown ? (
-                                  <span className="text-green-600 font-medium">{cooldown}s</span>
-                                ) : (
-                                  <RefreshCw className="size-3" />
-                                )}
-                              </Button>
-                            )}
+                            {/* Import Button (manual accounts) */}
                             {!needsReconnect && !isPlaid && (
                               <Button
                                 variant="outline"
@@ -694,6 +697,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
           </ScrollArea>
         </PopoverContent>
       </Popover>
+      </div>
 
       {/* Account Form Dialog */}
       <AccountDialog
