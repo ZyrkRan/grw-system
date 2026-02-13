@@ -364,6 +364,99 @@ function ColumnsDropdown<T>({
 }
 
 // ---------------------------------------------------------------------------
+// DefaultCard — auto-generated mobile card from column definitions
+// ---------------------------------------------------------------------------
+
+function DefaultCard<T>({
+  row,
+  pinnedStartColumns,
+  pinnedColumns,
+  visibleMovableColumns,
+  selectable,
+  isSelected,
+  onToggle,
+  onRowClick,
+  rowStyle,
+}: {
+  row: T
+  pinnedStartColumns: ColumnDef<T>[]
+  pinnedColumns: ColumnDef<T>[]
+  visibleMovableColumns: ColumnDef<T>[]
+  selectable: boolean
+  isSelected: boolean
+  onToggle: () => void
+  onRowClick?: (row: T) => void
+  rowStyle?: (row: T) => React.CSSProperties | undefined
+}) {
+  const primaryCol = visibleMovableColumns[0]
+  const bodyColumns = visibleMovableColumns.slice(1).filter((col) => col.label !== "")
+
+  function renderCol(col: ColumnDef<T>) {
+    const raw = getNestedValue(row, col.key)
+    return col.render ? col.render(raw, row) : String(raw ?? "")
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-md border p-3 space-y-2 transition-colors",
+        isSelected && "bg-muted",
+        onRowClick && "cursor-pointer active:bg-muted/50"
+      )}
+      style={rowStyle?.(row)}
+      onClick={onRowClick ? () => onRowClick(row) : undefined}
+    >
+      {/* Header: checkbox + pinnedStart + primary column + pinned-end (actions) */}
+      <div className="flex items-center gap-2">
+        {selectable && (
+          <Checkbox
+            checked={isSelected}
+            onClick={(e) => e.stopPropagation()}
+            onCheckedChange={onToggle}
+            aria-label="Select row"
+            className="shrink-0"
+          />
+        )}
+        {pinnedStartColumns.map((col) => (
+          <span key={col.key} className="shrink-0" onClick={(e) => e.stopPropagation()}>
+            {renderCol(col)}
+          </span>
+        ))}
+        {primaryCol && (
+          <div className="flex-1 min-w-0 font-medium" onClick={(e) => { if (!onRowClick) e.stopPropagation() }}>
+            {renderCol(primaryCol)}
+          </div>
+        )}
+        {pinnedColumns.map((col) => (
+          <div key={col.key} className="shrink-0" onClick={(e) => e.stopPropagation()}>
+            {renderCol(col)}
+          </div>
+        ))}
+      </div>
+
+      {/* Body: label-value grid for remaining columns */}
+      {bodyColumns.length > 0 && (
+        <div
+          className={cn(
+            "grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-sm",
+            selectable && "pl-7"
+          )}
+        >
+          {bodyColumns.map((col) => (
+            <React.Fragment key={col.key}>
+              <span className="text-muted-foreground text-xs whitespace-nowrap">{col.label}</span>
+              <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+                {renderCol(col)}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // DataTable — main component
 // ---------------------------------------------------------------------------
 
@@ -614,12 +707,14 @@ export function DataTable<T>({
   }, [selectedRows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Derived visible columns in order ----
+  const orderedVisibleMovable = columnOrder
+    .filter((c) => c.visible)
+    .map((c) => colMap.get(c.key)!)
+    .filter(Boolean)
+
   const visibleColumns = [
     ...pinnedStartColumns,
-    ...columnOrder
-      .filter((c) => c.visible)
-      .map((c) => colMap.get(c.key)!)
-      .filter(Boolean),
+    ...orderedVisibleMovable,
     ...pinnedColumns,
   ]
 
@@ -801,31 +896,43 @@ export function DataTable<T>({
       </div>
 
       {/* Mobile card view */}
-      {renderCard && (
-        <div className="space-y-2 md:hidden">
-          {paginatedData.length === 0 ? (
-            <div className="rounded-md border py-12 text-center text-sm text-muted-foreground">
-              {emptyMessage}
-            </div>
-          ) : (
-            paginatedData.map((row) => {
-              const id = getRowId(row, rowKey)
-              const isSelected = selectedIds.has(id)
-              return (
-                <div key={id} data-state={isSelected ? "selected" : undefined}>
-                  {renderCard(row, {
+      <div className="space-y-2 md:hidden">
+        {paginatedData.length === 0 ? (
+          <div className="rounded-md border py-12 text-center text-sm text-muted-foreground">
+            {emptyMessage}
+          </div>
+        ) : (
+          paginatedData.map((row) => {
+            const id = getRowId(row, rowKey)
+            const isSelected = selectedIds.has(id)
+            return (
+              <div key={id} data-state={isSelected ? "selected" : undefined}>
+                {renderCard ? (
+                  renderCard(row, {
                     isSelected,
                     onToggle: () => toggleRow(id),
-                  })}
-                </div>
-              )
-            })
-          )}
-        </div>
-      )}
+                  })
+                ) : (
+                  <DefaultCard
+                    row={row}
+                    pinnedStartColumns={pinnedStartColumns}
+                    pinnedColumns={pinnedColumns}
+                    visibleMovableColumns={orderedVisibleMovable}
+                    selectable={selectable}
+                    isSelected={isSelected}
+                    onToggle={() => toggleRow(id)}
+                    onRowClick={onRowClick}
+                    rowStyle={rowStyle}
+                  />
+                )}
+              </div>
+            )
+          })
+        )}
+      </div>
 
-      {/* Table */}
-      <div className={cn("rounded-md border", renderCard && "hidden md:block")}>
+      {/* Table (desktop only) */}
+      <div className="hidden rounded-md border md:block">
         <Table>
           <TableHeader>
             <TableRow>
