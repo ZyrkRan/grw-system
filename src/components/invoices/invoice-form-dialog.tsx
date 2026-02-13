@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Loader2, Plus, X, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -399,25 +400,22 @@ export function InvoiceFormDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="inv-issue-date">Issue Date *</Label>
-                  <Input
-                    id="inv-issue-date"
-                    type="date"
-                    value={issueDate}
-                    onChange={(e) => setIssueDate(e.target.value)}
-                    required
+                  <Label>Issue Date *</Label>
+                  <DatePicker
+                    date={issueDate ? new Date(issueDate + "T00:00:00") : undefined}
+                    onSelect={(d) => setIssueDate(d ? d.toISOString().split("T")[0] : "")}
+                    placeholder="Pick a date"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="inv-due-date">Due Date</Label>
-                  <Input
-                    id="inv-due-date"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
+                  <Label>Due Date</Label>
+                  <DatePicker
+                    date={dueDate ? new Date(dueDate + "T00:00:00") : undefined}
+                    onSelect={(d) => setDueDate(d ? d.toISOString().split("T")[0] : "")}
+                    placeholder="Pick a date"
                   />
                 </div>
                 <div />
@@ -584,14 +582,13 @@ export function InvoiceFormDialog({
                         </div>
                         <div className="md:col-span-3">
                           <Label className="md:hidden text-xs text-muted-foreground">Service Date</Label>
-                          <Input
-                            type="date"
-                            value={item.serviceDate}
-                            onChange={(e) =>
+                          <DatePicker
+                            date={item.serviceDate ? new Date(item.serviceDate + "T00:00:00") : undefined}
+                            onSelect={(d) =>
                               updateLineItem(
                                 index,
                                 "serviceDate",
-                                e.target.value
+                                d ? d.toISOString().split("T")[0] : ""
                               )
                             }
                             className="h-8"

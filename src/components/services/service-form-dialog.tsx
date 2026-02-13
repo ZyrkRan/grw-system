@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Loader2, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -368,13 +369,11 @@ export function ServiceFormDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="sf-date">Service Date *</Label>
-                  <Input
-                    id="sf-date"
-                    type="date"
-                    value={serviceDate}
-                    onChange={(e) => setServiceDate(e.target.value)}
-                    required
+                  <Label>Service Date *</Label>
+                  <DatePicker
+                    date={serviceDate ? new Date(serviceDate + "T00:00:00") : undefined}
+                    onSelect={(d) => setServiceDate(d ? d.toISOString().split("T")[0] : "")}
+                    placeholder="Pick a date"
                   />
                 </div>
               </div>
@@ -441,12 +440,11 @@ export function ServiceFormDialog({
 
               {paymentStatus === "PAID" && (
                 <div className="space-y-2">
-                  <Label htmlFor="sf-payment-date">Payment Date</Label>
-                  <Input
-                    id="sf-payment-date"
-                    type="date"
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
+                  <Label>Payment Date</Label>
+                  <DatePicker
+                    date={paymentDate ? new Date(paymentDate + "T00:00:00") : undefined}
+                    onSelect={(d) => setPaymentDate(d ? d.toISOString().split("T")[0] : "")}
+                    placeholder="Pick a date"
                   />
                 </div>
               )}
@@ -488,11 +486,10 @@ export function ServiceFormDialog({
                         key={index}
                         className="flex items-center gap-2 rounded-md border p-2"
                       >
-                        <Input
-                          type="date"
-                          value={entry.date}
-                          onChange={(e) =>
-                            updateTimeEntry(index, "date", e.target.value)
+                        <DatePicker
+                          date={entry.date ? new Date(entry.date + "T00:00:00") : undefined}
+                          onSelect={(d) =>
+                            updateTimeEntry(index, "date", d ? d.toISOString().split("T")[0] : "")
                           }
                           className="w-36"
                         />
