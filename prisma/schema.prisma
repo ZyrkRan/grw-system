@@ -66,6 +66,7 @@ model User {
   categorizationRules      CategorizationRule[]
   deletedPlaidTransactions DeletedPlaidTransaction[]
   transactionAttachments   TransactionAttachment[]
+  routes                   Route[]
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -98,9 +99,10 @@ model Customer {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id])
-  serviceLogs ServiceLog[]
-  invoices    Invoice[]
+  user           User            @relation(fields: [userId], references: [id])
+  serviceLogs    ServiceLog[]
+  invoices       Invoice[]
+  routeCustomers RouteCustomer[]
 }
 
 // ─── ServiceType ─────────────────────────────────────────────────────────────
@@ -348,4 +350,36 @@ model CategorizationRule {
 
   user     User                @relation(fields: [userId], references: [id])
   category TransactionCategory @relation(fields: [categoryId], references: [id])
+}
+
+// ─── Route ─────────────────────────────────────────────────────────────────
+
+model Route {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  color       String?
+  date        DateTime?
+  userId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id])
+  customers RouteCustomer[]
+}
+
+// ─── RouteCustomer ─────────────────────────────────────────────────────────
+
+model RouteCustomer {
+  id         Int      @id @default(autoincrement())
+  routeId    Int
+  customerId Int
+  position   Int
+  createdAt  DateTime @default(now())
+
+  route    Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, customerId])
+  @@index([routeId, position])
 }

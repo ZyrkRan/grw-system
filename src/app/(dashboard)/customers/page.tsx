@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, MoreHorizontal, Pencil, Trash2, Loader2, Star } from "lucide-react"
+import { Plus, MoreHorizontal, Pencil, Trash2, Loader2, Star, Route } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -39,6 +39,7 @@ interface Customer {
   nextDueDate: string | null
   daysUntilDue: number | null
   dueStatus: DueStatus
+  routes: { name: string; color: string | null }[]
 }
 
 export default function CustomersPage() {
@@ -223,8 +224,23 @@ export default function CustomersPage() {
     {
       key: "name",
       label: "Name",
-      render: (v) => (
-        <span className="font-medium">{v as string}</span>
+      render: (_, customer) => (
+        <div>
+          <span className="font-medium">{customer.name}</span>
+          {customer.routes.length > 0 && (
+            <p className="flex items-center gap-1 text-xs truncate max-w-48">
+              <Route className="size-3 shrink-0" style={customer.routes[0]?.color ? { color: customer.routes[0].color } : undefined} />
+              {customer.routes.map((r, i) => (
+                <span key={r.name}>
+                  {i > 0 && <span className="text-muted-foreground">, </span>}
+                  <span style={r.color ? { color: r.color } : undefined} className={r.color ? undefined : "text-muted-foreground"}>
+                    {r.name}
+                  </span>
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
       ),
     },
     { key: "phone", label: "Phone" },

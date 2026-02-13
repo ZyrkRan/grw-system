@@ -40,15 +40,26 @@ export async function GET(request: NextRequest) {
           take: 1,
           select: { serviceDate: true },
         },
+        routeCustomers: {
+          select: {
+            route: {
+              select: { name: true, color: true },
+            },
+          },
+        },
       },
     })
 
-    const data = customers.map(({ serviceLogs, ...customer }) => {
+    const data = customers.map(({ serviceLogs, routeCustomers, ...customer }) => {
       const dueInfo = computeDueDateInfo(
         serviceLogs[0]?.serviceDate,
         customer.serviceInterval
       )
-      return { ...customer, ...dueInfo }
+      return {
+        ...customer,
+        ...dueInfo,
+        routes: routeCustomers.map((rc) => rc.route),
+      }
     })
 
     return NextResponse.json({ success: true, data })

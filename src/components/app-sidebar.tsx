@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react"
 import {
   LayoutDashboard,
   Users,
+  Route,
   Wrench,
   FileText,
   DollarSign,
@@ -38,6 +39,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Customers", url: "/customers", icon: Users },
+  { title: "Routes", url: "/routes", icon: Route },
   { title: "Services", url: "/services", icon: Wrench },
   { title: "Invoices", url: "/invoices", icon: FileText },
   { title: "Finances", url: "/finances", icon: DollarSign },
