@@ -16,6 +16,7 @@ import {
   Upload,
   Loader2,
   AlertCircle,
+  Unplug,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -42,8 +43,8 @@ import {
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { usePlaidLink } from "react-plaid-link"
 import { AccountDialog } from "@/components/finances/account-dialog"
-import { PlaidLinkButton } from "@/components/finances/plaid-link-button"
 import { PlaidReconnectButton } from "@/components/finances/plaid-reconnect-button"
 import { CSVImportDialog } from "@/components/finances/csv-import-dialog"
 
@@ -51,6 +52,14 @@ interface PlaidItemInfo {
   id: string
   institutionName: string | null
   status: string
+}
+
+interface OrphanedPlaidItem {
+  id: string
+  institutionName: string | null
+  status: string
+  lastError: string | null
+  _count: { bankAccounts: number }
 }
 
 interface Account {
@@ -148,12 +157,23 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
   const [importTarget, setImportTarget] = useState<Account | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
+  // Orphaned Plaid connections
+  const [orphanedItems, setOrphanedItems] = useState<OrphanedPlaidItem[]>([])
+  const [removingItems, setRemovingItems] = useState<Set<string>>(new Set())
+
+  // Plaid Link — hook lives at component root so it survives popover/dropdown unmounts
+  const [plaidLinkToken, setPlaidLinkToken] = useState<string | null>(null)
+  const [plaidLinkLoading, setPlaidLinkLoading] = useState(false)
+  const [plaidLinkError, setPlaidLinkError] = useState<string | null>(null)
+
   // Sync state per account
   const [syncingAccounts, setSyncingAccounts] = useState<Set<string>>(new Set())
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
   const [syncCooldowns, setSyncCooldowns] = useState<Record<string, number>>({})
+  const [syncElapsed, setSyncElapsed] = useState<Record<string, number>>({})
 
   const cooldownIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+  const fetchAccountsRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     const intervals = cooldownIntervalsRef.current
@@ -163,23 +183,96 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
     }
   }, [])
 
+  // Plaid Link hook — at component root, outside all portals
+  const onPlaidLinkSuccess = useCallback(
+    async (publicToken: string, metadata: { institution?: { institution_id?: string; name?: string } | null }) => {
+      try {
+        const res = await fetch("/api/finances/plaid/exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            publicToken,
+            institutionId: metadata.institution?.institution_id || null,
+            institutionName: metadata.institution?.name || null,
+          }),
+        })
+        const result = await res.json()
+        if (!result.success) {
+          setPlaidLinkError(result.error || "Failed to link account")
+        }
+      } catch {
+        setPlaidLinkError("Failed to link account. Please try again.")
+      } finally {
+        setPlaidLinkToken(null)
+        fetchAccountsRef.current()
+      }
+    },
+    []
+  )
+
+  const { open: openPlaidLink, ready: plaidLinkReady } = usePlaidLink({
+    token: plaidLinkToken,
+    onSuccess: onPlaidLinkSuccess,
+    onExit: () => setPlaidLinkToken(null),
+  })
+
+  useEffect(() => {
+    if (plaidLinkToken && plaidLinkReady) {
+      // Close popover + dropdown before Plaid Link opens
+      setOpen(false)
+      setAddMenuOpen(false)
+      openPlaidLink()
+    }
+  }, [plaidLinkToken, plaidLinkReady, openPlaidLink])
+
+  async function handleLinkBankAccount() {
+    setPlaidLinkLoading(true)
+    setPlaidLinkError(null)
+    try {
+      const res = await fetch("/api/finances/plaid", { method: "POST" })
+      const result = await res.json()
+      if (result.success) {
+        setPlaidLinkToken(result.data.linkToken)
+      } else {
+        setPlaidLinkError(result.error || "Failed to create link token")
+      }
+    } catch {
+      setPlaidLinkError("Failed to connect to Plaid. Please try again.")
+    } finally {
+      setPlaidLinkLoading(false)
+    }
+  }
+
   const fetchAccounts = useCallback(async () => {
     setIsLoading(true)
     setFetchError(null)
     try {
-      const res = await fetch("/api/finances/accounts")
+      const [accountsRes, itemsRes] = await Promise.all([
+        fetch("/api/finances/accounts"),
+        fetch("/api/finances/plaid/items"),
+      ])
 
       // Validate HTTP response
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      if (!accountsRes.ok) {
+        throw new Error(`HTTP ${accountsRes.status}: ${accountsRes.statusText}`)
       }
 
-      const result = await res.json()
+      const result = await accountsRes.json()
 
       if (result.success) {
         setAccounts(result.data)
       } else {
         throw new Error(result.error || "Failed to load accounts")
+      }
+
+      // Process orphaned Plaid items (best-effort — don't block on failure)
+      if (itemsRes.ok) {
+        const itemsResult = await itemsRes.json()
+        if (itemsResult.success) {
+          setOrphanedItems(
+            itemsResult.data.filter((item: OrphanedPlaidItem) => item._count.bankAccounts === 0)
+          )
+        }
       }
     } catch (error) {
       console.error("Failed to fetch accounts:", error)
@@ -188,6 +281,8 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
       setIsLoading(false)
     }
   }, [])
+
+  fetchAccountsRef.current = fetchAccounts
 
   useEffect(() => {
     fetchAccounts()
@@ -239,6 +334,12 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
       return next
     })
 
+    // Start elapsed timer
+    setSyncElapsed((prev) => ({ ...prev, [key]: 0 }))
+    const elapsedInterval = setInterval(() => {
+      setSyncElapsed((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }))
+    }, 1000)
+
     try {
       const res = await fetch("/api/finances/plaid/sync", {
         method: "POST",
@@ -275,6 +376,12 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
         [key]: error instanceof Error ? error.message : "Error",
       }))
     } finally {
+      clearInterval(elapsedInterval)
+      setSyncElapsed((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
       setSyncingAccounts((prev) => {
         const next = new Set(prev)
         next.delete(key)
@@ -391,9 +498,39 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
     fetchAccounts()
   }
 
-  function handlePlaidSuccess() {
-    setAddMenuOpen(false)
-    fetchAccounts()
+  async function handleRemoveOrphan(itemId: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setRemovingItems((prev) => new Set(prev).add(itemId))
+    try {
+      const res = await fetch(`/api/finances/plaid/items/${itemId}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        const result = await res.json()
+        if (result.success) {
+          setOrphanedItems((prev) => prev.filter((item) => item.id !== itemId))
+          return
+        }
+      }
+      // Update the item's error display so the user sees something went wrong
+      setOrphanedItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, lastError: "Failed to remove — try again" } : item
+        )
+      )
+    } catch {
+      setOrphanedItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, lastError: "Failed to remove — try again" } : item
+        )
+      )
+    } finally {
+      setRemovingItems((prev) => {
+        const next = new Set(prev)
+        next.delete(itemId)
+        return next
+      })
+    }
   }
 
   const selectedAccount = accounts.find((acc) => String(acc.id) === selectedAccountId)
@@ -401,6 +538,7 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
   const selectedKey = selectedAccount ? String(selectedAccount.id) : ""
   const isSyncingSelected = selectedKey ? syncingAccounts.has(selectedKey) : false
   const selectedCooldown = selectedKey ? syncCooldowns[selectedKey] : undefined
+  const selectedElapsed = selectedKey ? syncElapsed[selectedKey] : undefined
 
   return (
     <>
@@ -408,14 +546,17 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
         {canSyncSelected && (
           <Button
             variant="outline"
-            size="icon"
+            size={isSyncingSelected ? "sm" : "icon"}
             className="shrink-0"
             onClick={(e) => selectedAccount && handleSync(selectedAccount, e)}
             disabled={isSyncingSelected || !!selectedCooldown}
-            title={isSyncingSelected ? "Syncing..." : selectedCooldown ? `Wait ${selectedCooldown}s` : "Sync account"}
+            title={isSyncingSelected ? `Syncing... (${selectedElapsed ?? 0}s)` : selectedCooldown ? `Wait ${selectedCooldown}s` : "Sync account"}
           >
             {isSyncingSelected ? (
-              <Loader2 className="size-4 animate-spin" />
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                <span className="text-xs tabular-nums">{selectedElapsed ?? 0}s</span>
+              </>
             ) : (
               <RefreshCw className="size-4" />
             )}
@@ -455,11 +596,28 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
-                <PlaidLinkButton
-                  onSuccess={handlePlaidSuccess}
-                  asDropdownItem
-                  onInitiate={() => setAddMenuOpen(false)}
-                />
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    handleLinkBankAccount()
+                  }}
+                  disabled={plaidLinkLoading}
+                >
+                  {plaidLinkLoading ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <Landmark className="mr-2 size-4" />
+                  )}
+                  <div className="flex flex-col">
+                    <span>{plaidLinkLoading ? "Connecting..." : "Link Bank Account"}</span>
+                    <span className="text-xs text-muted-foreground font-normal">
+                      Connect via Plaid for automatic sync
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                {plaidLinkError && (
+                  <p className="px-2 py-1 text-xs text-destructive">{plaidLinkError}</p>
+                )}
                 <DropdownMenuItem onClick={handleAddManualAccount}>
                   <Plus className="mr-2 size-4" />
                   <div className="flex flex-col">
@@ -653,6 +811,58 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
                       </div>
                     )
                   })}
+                </>
+              )}
+
+              {/* Orphaned Plaid Connections */}
+              {orphanedItems.length > 0 && !isLoading && (
+                <>
+                  <Separator className="my-1" />
+                  <div className="px-3 py-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Disconnected Connections ({orphanedItems.length})
+                    </span>
+                  </div>
+                  {orphanedItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-md px-3 py-2 hover:bg-accent transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="flex size-8 items-center justify-center rounded-md bg-muted shrink-0">
+                          <Unplug className="size-4 text-muted-foreground" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm truncate">
+                            {item.institutionName || "Unknown Institution"}
+                          </span>
+                          <span className="text-xs text-muted-foreground truncate">
+                            {item.lastError || "No linked accounts"}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive shrink-0"
+                        onClick={(e) => handleRemoveOrphan(item.id, e)}
+                        disabled={removingItems.has(item.id)}
+                        aria-label={`Remove ${item.institutionName || "unknown"} connection`}
+                      >
+                        {removingItems.has(item.id) ? (
+                          <>
+                            <Loader2 className="size-3 animate-spin mr-1" />
+                            Removing...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="size-3 mr-1" />
+                            Remove
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  ))}
                 </>
               )}
 

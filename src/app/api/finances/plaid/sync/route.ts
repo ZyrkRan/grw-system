@@ -55,6 +55,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Request fresh data from the bank (best-effort, don't block on failure)
+    try {
+      await plaidClient.transactionsRefresh({
+        access_token: plaidItem.accessToken,
+      })
+    } catch (refreshError) {
+      console.warn("[Sync] transactionsRefresh failed (proceeding with sync):", refreshError)
+    }
+
     // Fetch transaction updates and balances in parallel
     // Balance fetch is independent of transactions — no need to wait
     const balancePromise = plaidClient.accountsBalanceGet({

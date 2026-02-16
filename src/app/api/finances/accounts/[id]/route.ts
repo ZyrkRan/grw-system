@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { plaidClient } from "@/lib/plaid"
 import { updateAccountSchema, accountResetSchema, formatZodError } from "@/lib/validations/finances"
 import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 
@@ -180,6 +181,26 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       prisma.bankTransaction.deleteMany({ where: { accountId } }),
       prisma.bankAccount.delete({ where: { id: accountId } }),
     ])
+
+    // Auto-cleanup: if this was the last account on a PlaidItem, remove the PlaidItem too
+    if (account.plaidItemId) {
+      const remaining = await prisma.bankAccount.count({
+        where: { plaidItemId: account.plaidItemId },
+      })
+      if (remaining === 0) {
+        const orphan = await prisma.plaidItem.findUnique({
+          where: { id: account.plaidItemId },
+        })
+        if (orphan) {
+          try {
+            await plaidClient.itemRemove({ access_token: orphan.accessToken })
+          } catch (err) {
+            console.warn(`Failed to revoke Plaid token for item ${orphan.id}:`, err)
+          }
+          await prisma.plaidItem.delete({ where: { id: orphan.id } })
+        }
+      }
+    }
 
     return NextResponse.json({ success: true, data: { deleted: true } })
   } catch (error) {
