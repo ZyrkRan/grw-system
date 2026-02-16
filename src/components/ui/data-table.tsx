@@ -128,6 +128,8 @@ export interface DataTableProps<T> {
   /** Render a card for each row on mobile (below md). When provided, the table is hidden below md and cards are shown instead. */
   renderCard?: (row: T, meta: { isSelected: boolean; onToggle: () => void }) => React.ReactNode
   emptyMessage?: string
+  /** Extra content rendered in the toolbar between search and column filters */
+  toolbarContent?: React.ReactNode
   className?: string
 }
 
@@ -434,20 +436,22 @@ function DefaultCard<T>({
         ))}
       </div>
 
-      {/* Body: label-value grid for remaining columns */}
+      {/* Body: flowing inline items */}
       {bodyColumns.length > 0 && (
         <div
           className={cn(
-            "grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-sm",
+            "flex flex-wrap items-center gap-x-3 gap-y-1 text-sm",
             selectable && "pl-7"
           )}
         >
-          {bodyColumns.map((col) => (
+          {bodyColumns.map((col, i) => (
             <React.Fragment key={col.key}>
-              <span className="text-muted-foreground text-xs whitespace-nowrap">{col.label}</span>
-              <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+              <span className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                 {renderCol(col)}
-              </div>
+              </span>
+              {i < bodyColumns.length - 1 && (
+                <span className="text-muted-foreground/40 select-none">·</span>
+              )}
             </React.Fragment>
           ))}
         </div>
@@ -475,6 +479,7 @@ export function DataTable<T>({
   renderCard,
   rowStyle,
   emptyMessage = "No data.",
+  toolbarContent,
   className,
 }: DataTableProps<T>) {
   // Split columns into pinned-start, movable, and pinned-end
@@ -799,6 +804,8 @@ export function DataTable<T>({
             )}
           </div>
         )}
+
+        {toolbarContent}
 
         {/* Column filter dropdowns */}
         {filterableColumns.map((col) => {

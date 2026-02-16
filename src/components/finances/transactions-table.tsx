@@ -10,6 +10,7 @@ import {
   X,
   Tags,
   Paperclip,
+  Filter,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +32,13 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { TransactionDialog } from "@/components/finances/transaction-dialog"
 import type { TimeframeValue } from "@/components/finances/timeframe-selector"
 
@@ -112,6 +120,9 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
   const [deleteError, setDeleteError] = useState("")
   const bulkClearRef = useRef<(() => void) | null>(null)
 
+  // Category filter: "all", "uncategorized", or a category ID string
+  const [categoryFilter, setCategoryFilter] = useState("all")
+
   // Quick category assign
   const [assigningTxnId, setAssigningTxnId] = useState<number | null>(null)
   const [isBulkAssigning, setIsBulkAssigning] = useState(false)
@@ -150,6 +161,11 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       }
       if (timeframe?.dateFrom) params.set("dateFrom", timeframe.dateFrom)
       if (timeframe?.dateTo) params.set("dateTo", timeframe.dateTo)
+      if (categoryFilter === "uncategorized") {
+        params.set("uncategorized", "true")
+      } else if (categoryFilter !== "all") {
+        params.set("categoryId", categoryFilter)
+      }
       // Use server-side pagination with a large page size so
       // client-side DataTable pagination still works as before
       params.set("pageSize", "250")
@@ -168,7 +184,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
     } finally {
       setIsLoading(false)
     }
-  }, [accountId, timeframe, refreshKey])
+  }, [accountId, timeframe, refreshKey, categoryFilter])
 
   useEffect(() => {
     fetchTransactions()
@@ -364,8 +380,6 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
     {
       key: "category",
       label: "Category",
-      filterable: true,
-      filterValue: (row) => row.category?.name ?? "Uncategorized",
       sortValue: (row) => row.category?.name ?? "",
       render: (_, row) => (
         <DropdownMenu>
@@ -492,17 +506,12 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold shrink-0">
           Transactions
           {pagination && ` (${pagination.total})`}
-          {uncategorizedCount > 0 && (
-            <span className="text-muted-foreground font-normal text-base ml-1">
-              {uncategorizedCount} uncategorized
-            </span>
-          )}
         </h2>
-        <Button onClick={handleAddTransaction}>
+        <Button onClick={handleAddTransaction} className="shrink-0">
           <Plus className="mr-2 size-4" />
           Add Transaction
         </Button>
@@ -525,6 +534,29 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
           }
           searchable
           searchPlaceholder="Search by description, merchant, or date..."
+          toolbarContent={
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[180px] h-9">
+                <Filter className="size-3.5 text-muted-foreground mr-1.5" />
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="inline-block size-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: c.color }}
+                      />
+                      {c.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
           selectable
           renderCard={(txn, { isSelected, onToggle }) => (
             <div
