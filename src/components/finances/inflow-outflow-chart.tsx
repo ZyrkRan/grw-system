@@ -62,6 +62,64 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+interface TickMeta {
+  day: string
+  month: string
+  showMonth: boolean
+}
+
+function computeTickMeta(points: InflowOutflowPoint[]): TickMeta[] {
+  const meta: TickMeta[] = points.map((p) => {
+    const [, m, d] = p.date.split("-")
+    return {
+      day: String(parseInt(d, 10)),
+      month: SHORT_MONTHS[parseInt(m, 10) - 1],
+      showMonth: false,
+    }
+  })
+
+  let i = 0
+  while (i < meta.length) {
+    const month = meta[i].month
+    let j = i
+    while (j < meta.length && meta[j].month === month) j++
+    const mid = Math.floor((i + j - 1) / 2)
+    meta[mid].showMonth = true
+    i = j
+  }
+
+  return meta
+}
+
+function CustomXAxisTick({ x, y, index, payload, tickMeta, fill, fontSize }: any) {
+  const size = fontSize || 12
+
+  if (!tickMeta || !tickMeta[index]) {
+    return (
+      <text x={x} y={y + 16} textAnchor="middle" fontSize={size} fill={fill}>
+        {payload.value}
+      </text>
+    )
+  }
+
+  const { day, month, showMonth } = tickMeta[index]
+
+  return (
+    <g>
+      <text x={x} y={y + 14} textAnchor="middle" fontSize={size} fill={fill}>
+        {day}
+      </text>
+      {showMonth && (
+        <text x={x} y={y + 28} textAnchor="middle" fontSize={size} fill={fill} opacity={0.5}>
+          {month}
+        </text>
+      )}
+    </g>
+  )
+}
+
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload || payload.length === 0) return null
 
@@ -182,6 +240,10 @@ export function InflowOutflowChart({
 
   const [compactOpen, setCompactOpen] = useState(false)
 
+  const tickMeta = data && data.granularity !== "monthly"
+    ? computeTickMeta(data.points)
+    : null
+
   if (compact) {
     return (
       <Card>
@@ -251,7 +313,16 @@ export function InflowOutflowChart({
                 <ChartContainer config={chartConfig} className="h-[200px] w-full">
                   <BarChart accessibilityLayer data={data.points}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      height={tickMeta ? 45 : undefined}
+                      tick={(props: any) => (
+                        <CustomXAxisTick {...props} tickMeta={tickMeta} fontSize={11} />
+                      )}
+                    />
                     <YAxis
                       tickFormatter={(v: number) => formatCurrency(v)}
                       axisLine={false}
@@ -340,7 +411,16 @@ export function InflowOutflowChart({
               <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
                 <BarChart accessibilityLayer data={data.points}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
+                    height={tickMeta ? 50 : undefined}
+                    tick={(props: any) => (
+                      <CustomXAxisTick {...props} tickMeta={tickMeta} />
+                    )}
+                  />
                   <YAxis
                     tickFormatter={(v: number) => formatCurrency(v)}
                     axisLine={false}

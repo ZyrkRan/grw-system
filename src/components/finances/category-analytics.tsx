@@ -299,7 +299,7 @@ function SpendingPieChart({
         </ChartContainer>
         {tooltipSide && hoveredSlice && mousePos && (
           <div
-            className="pointer-events-none absolute z-50 rounded-lg border bg-background p-2 shadow-sm"
+            className="pointer-events-none absolute z-50 min-w-[180px] rounded-lg border bg-background p-2 shadow-sm"
             style={{
               top: mousePos.y,
               left: mousePos.x,
@@ -354,27 +354,6 @@ function SpendingPieChart({
               ))}
               <Label content={renderCenterLabel} position="center" />
             </Pie>
-            <ChartTooltip
-              content={({ active, payload }) => {
-                if (!active || !payload || !payload.length) return null
-                const data = payload[0].payload
-                return (
-                  <div className="rounded-lg border bg-background p-2 shadow-sm">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-medium">{data.name}</span>
-                      <span className="text-sm font-bold">{formatCurrency(data.value)}</span>
-                      <span className="text-xs text-muted-foreground">{data.count} transactions</span>
-                      {data.isGroup && onCategoryClick && (
-                        <span className="text-xs text-primary">Click to expand</span>
-                      )}
-                      {!data.isGroup && onSliceSelect && (
-                        <span className="text-xs text-primary">Click to view transactions</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              }}
-            />
             <ChartLegend
               content={({ payload }) => {
                 if (!payload || !payload.length) return null

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Plus, X } from "lucide-react"
+import { Loader2, Minus, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -187,7 +187,7 @@ export function ServiceFormDialog({
       ...prev,
       {
         date: serviceDate || new Date().toISOString().split("T")[0],
-        durationMinutes: "",
+        durationMinutes: "30",
         description: "",
       },
     ])
@@ -205,6 +205,18 @@ export function ServiceFormDialog({
     setTimeEntries((prev) =>
       prev.map((entry, i) => (i === index ? { ...entry, [field]: value } : entry))
     )
+  }
+
+  function incrementDuration(index: number) {
+    const current = parseInt(timeEntries[index].durationMinutes, 10) || 0
+    updateTimeEntry(index, "durationMinutes", String(current + 30))
+  }
+
+  function decrementDuration(index: number) {
+    const current = parseInt(timeEntries[index].durationMinutes, 10) || 0
+    if (current > 30) {
+      updateTimeEntry(index, "durationMinutes", String(current - 30))
+    }
   }
 
   const totalDuration = timeEntries.reduce(
@@ -493,20 +505,30 @@ export function ServiceFormDialog({
                           }
                           className="w-36"
                         />
-                        <Input
-                          type="number"
-                          min="1"
-                          value={entry.durationMinutes}
-                          onChange={(e) =>
-                            updateTimeEntry(
-                              index,
-                              "durationMinutes",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Minutes"
-                          className="w-24"
-                        />
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="size-8 shrink-0"
+                            onClick={() => decrementDuration(index)}
+                            disabled={(parseInt(entry.durationMinutes, 10) || 0) <= 30}
+                          >
+                            <Minus className="size-3.5" />
+                          </Button>
+                          <span className="w-16 text-center text-sm font-medium tabular-nums">
+                            {formatDuration(parseInt(entry.durationMinutes, 10) || 0)}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="size-8 shrink-0"
+                            onClick={() => incrementDuration(index)}
+                          >
+                            <Plus className="size-3.5" />
+                          </Button>
+                        </div>
                         <Input
                           value={entry.description}
                           onChange={(e) =>
