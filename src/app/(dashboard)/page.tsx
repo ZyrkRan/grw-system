@@ -370,7 +370,7 @@ function RevenueChart({
   const maxRevenue = Math.max(...monthlyRevenue.map((m) => m.revenue), 1)
 
   return (
-    <div className="flex items-end gap-3 h-52">
+    <div className="flex gap-3 h-52">
       {monthlyRevenue.map((item) => {
         const heightPercent = (item.revenue / maxRevenue) * 100
         return (
@@ -381,13 +381,15 @@ function RevenueChart({
             <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
               {formatCurrency(item.revenue)}
             </span>
-            <div
-              className="w-full rounded-t-sm bg-primary transition-all duration-300"
-              style={{
-                height: `${Math.max(heightPercent, 2)}%`,
-                minHeight: "4px",
-              }}
-            />
+            <div className="w-full flex-1 flex items-end">
+              <div
+                className="w-full rounded-t-sm bg-primary transition-all duration-300"
+                style={{
+                  height: `${Math.max(heightPercent, 2)}%`,
+                  minHeight: "4px",
+                }}
+              />
+            </div>
             <span className="text-xs text-muted-foreground font-medium">
               {getMonthLabel(item.month)}
             </span>
