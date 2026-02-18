@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Unplug,
 } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -355,26 +356,64 @@ export function AccountSwitcher({ selectedAccountId, onAccountChange, onSync }: 
       const result = await res.json()
 
       if (result.success) {
-        const { added, modified, removed } = result.data
+        const { added, modified, removed, merged, skipped, refreshFailed, plaidReturned } = result.data
+        const parts = [`+${added}`]
+        if (merged) parts.push(`⇄${merged}`)
+        parts.push(`~${modified}`, `-${removed}`)
         setSyncResults((prev) => ({
           ...prev,
-          [key]: `+${added} ~${modified} -${removed}`,
+          [key]: parts.join(" "),
         }))
+
+        if (skipped) {
+          toast.info("Sync already in progress", {
+            description: "Another sync is running. Try again in a moment.",
+          })
+        } else {
+          const total = added + modified + removed + merged
+          if (total > 0) {
+            const desc = [
+              added && `${added} added`,
+              merged && `${merged} merged`,
+              modified && `${modified} updated`,
+              removed && `${removed} removed`,
+            ].filter(Boolean).join(", ")
+            toast.success("Sync complete", { description: desc })
+          } else if (refreshFailed) {
+            toast.warning("Sync complete, but bank refresh failed", {
+              description: "Plaid couldn't fetch latest data from your bank. Try again shortly.",
+            })
+          } else if (plaidReturned && plaidReturned.added === 0 && plaidReturned.modified === 0 && plaidReturned.removed === 0) {
+            toast.success("Account up to date", {
+              description: "No new transactions from your bank.",
+            })
+          } else {
+            toast.success("Account up to date")
+          }
+        }
+
         fetchAccounts()
         onSync?.()
       } else if (result.loginRequired) {
+        toast.error("Reconnection required", {
+          description: "Your bank credentials have expired. Please reconnect.",
+        })
         fetchAccounts()
       } else {
+        const errMsg = result.error || "Failed"
         setSyncResults((prev) => ({
           ...prev,
-          [key]: result.error || "Failed",
+          [key]: errMsg,
         }))
+        toast.error("Sync failed", { description: errMsg })
       }
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Error"
       setSyncResults((prev) => ({
         ...prev,
-        [key]: error instanceof Error ? error.message : "Error",
+        [key]: errMsg,
       }))
+      toast.error("Sync failed", { description: errMsg })
     } finally {
       clearInterval(elapsedInterval)
       setSyncElapsed((prev) => {

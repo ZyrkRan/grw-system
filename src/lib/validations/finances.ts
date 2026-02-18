@@ -57,7 +57,7 @@ export const transactionQuerySchema = z.object({
   uncategorized: z.enum(["true"]).optional(),
   // Pagination
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(250).default(100),
+  pageSize: z.coerce.number().int().min(1).max(5000).default(100),
 })
 
 // ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ export const importRequestSchema = z.object({
 export const createAccountSchema = z.object({
   name: trimmedString(200),
   type: accountType,
-  accountNumber: optionalTrimmedString(50),
+  accountNumber: z.string().max(50).transform((s) => s.trim() || null).nullable().optional(),
   currentBalance: z.coerce.number().optional(),
 })
 

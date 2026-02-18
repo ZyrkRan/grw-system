@@ -10,6 +10,8 @@ import { BalanceChart } from "@/components/finances/balance-chart"
 import { InflowOutflowChart } from "@/components/finances/inflow-outflow-chart"
 import { TimeframeSelector, getTimeframeValue, type TimeframeValue } from "@/components/finances/timeframe-selector"
 import { AccountSwitcher } from "@/components/finances/account-switcher"
+import { useAutoSync } from "@/hooks/use-auto-sync"
+import { Loader2 } from "lucide-react"
 
 type Tab = "transactions" | "categories"
 type AnalyticsTab = "inflow-outflow" | "categories" | "balance"
@@ -26,6 +28,8 @@ export default function FinancesPage() {
   const handleSync = useCallback(() => {
     setSyncVersion((v) => v + 1)
   }, [])
+
+  const { isAutoSyncing } = useAutoSync(handleSync)
 
   // Hydrate timeframe from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
@@ -60,7 +64,15 @@ export default function FinancesPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold">Finances</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl font-bold">Finances</h1>
+          {isAutoSyncing && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Syncing...
+            </span>
+          )}
+        </div>
         {activeTab === "transactions" && (
           <AccountSwitcher
             selectedAccountId={selectedAccountId}
@@ -108,7 +120,7 @@ export default function FinancesPage() {
             <BalanceChart key={`bc-${syncVersion}`} accountId={selectedAccountId} timeframe={timeframe} compact />
           </div>
 
-          <TransactionsTable accountId={selectedAccountId} timeframe={timeframe} refreshKey={syncVersion} />
+          <TransactionsTable accountId={selectedAccountId} timeframe={timeframe} refreshKey={syncVersion} onTimeframeChange={handleTimeframeChange} />
         </>
       )}
       {activeTab === "categories" && <CategoriesManager />}

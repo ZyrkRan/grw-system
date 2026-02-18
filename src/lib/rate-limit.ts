@@ -76,6 +76,8 @@ export const rateLimits = {
   write: { limit: 30, windowSeconds: 60 },
   /** Plaid sync — 5 req / 60s (expensive external API call) */
   plaidSync: { limit: 5, windowSeconds: 60 },
+  /** Plaid webhook-triggered sync — 3 req / 60s per PlaidItem */
+  plaidWebhookSync: { limit: 3, windowSeconds: 60 },
   /** CSV import — 10 req / 60s */
   import: { limit: 10, windowSeconds: 60 },
 } as const

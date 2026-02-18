@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { SessionProvider } from "@/components/session-provider"
 import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -18,6 +19,7 @@ export default function RootLayout({
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <SessionProvider>{children}</SessionProvider>
+          <Toaster richColors closeButton />
         </ThemeProvider>
       </body>
     </html>

@@ -311,7 +311,7 @@ export function InflowOutflowChart({
               <div className={cn(compactOpen ? "block" : "hidden md:block")}>
                 <Separator className="mb-3" />
                 <ChartContainer config={chartConfig} className="h-[200px] w-full">
-                  <BarChart accessibilityLayer data={data.points}>
+                  <BarChart accessibilityLayer data={data.points.map(p => ({ ...p, inflow: Number(p.inflow) || 0, outflow: Number(p.outflow) || 0 }))}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis
                       dataKey="label"
@@ -329,6 +329,7 @@ export function InflowOutflowChart({
                       tickLine={false}
                       width={60}
                       tick={{ fontSize: 11 }}
+                      domain={[0, (max: number) => max || 10]}
                     />
                     <ChartTooltip content={<CustomTooltip />} />
                     <Bar
@@ -409,7 +410,7 @@ export function InflowOutflowChart({
           <Card>
             <CardContent className="pt-6">
               <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
-                <BarChart accessibilityLayer data={data.points}>
+                <BarChart accessibilityLayer data={data.points.map(p => ({ ...p, inflow: Number(p.inflow) || 0, outflow: Number(p.outflow) || 0 }))}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="label"
@@ -426,6 +427,7 @@ export function InflowOutflowChart({
                     axisLine={false}
                     tickLine={false}
                     width={70}
+                    domain={[0, (max: number) => max || 10]}
                   />
                   <ChartTooltip content={<CustomTooltip />} />
                   <ChartLegend content={<ChartLegendContent />} />

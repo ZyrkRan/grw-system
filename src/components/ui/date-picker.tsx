@@ -59,6 +59,7 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={date}
+          defaultMonth={date}
           onSelect={handleSelect}
           disabled={(date) => {
             if (minDate && date < minDate) return true

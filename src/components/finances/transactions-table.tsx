@@ -40,7 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { TransactionDialog } from "@/components/finances/transaction-dialog"
-import type { TimeframeValue } from "@/components/finances/timeframe-selector"
+import { getTimeframeValue, type TimeframeValue } from "@/components/finances/timeframe-selector"
 
 interface AccountRef {
   id: number
@@ -101,13 +101,15 @@ interface TransactionsTableProps {
   accountId?: string
   timeframe?: TimeframeValue
   refreshKey?: number
+  onTimeframeChange?: (value: TimeframeValue) => void
 }
 
-export function TransactionsTable({ accountId, timeframe, refreshKey }: TransactionsTableProps) {
+export function TransactionsTable({ accountId, timeframe, refreshKey, onTimeframeChange }: TransactionsTableProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [categories, setCategories] = useState<CategoryRef[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [totalOutsideTimeframe, setTotalOutsideTimeframe] = useState(0)
 
   // Dialogs
   const [formDialogOpen, setFormDialogOpen] = useState(false)
@@ -122,6 +124,12 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
 
   // Category filter: "all", "uncategorized", or a category ID string
   const [categoryFilter, setCategoryFilter] = useState("all")
+
+  function matchesCategoryFilter(txn: Transaction): boolean {
+    if (categoryFilter === "all") return true
+    if (categoryFilter === "uncategorized") return txn.category === null
+    return txn.category?.id === Number(categoryFilter)
+  }
 
   // Quick category assign
   const [assigningTxnId, setAssigningTxnId] = useState<number | null>(null)
@@ -168,7 +176,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       }
       // Use server-side pagination with a large page size so
       // client-side DataTable pagination still works as before
-      params.set("pageSize", "250")
+      params.set("pageSize", "5000")
       const url = `/api/finances/transactions?${params}`
       const res = await fetch(url)
       const result = await res.json()
@@ -177,6 +185,25 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
         setTransactions(result.data)
         if (result.pagination) {
           setPagination(result.pagination)
+        }
+
+        // If 0 results with an active date filter, check if transactions exist outside the timeframe
+        if (result.data.length === 0 && timeframe?.preset !== "all" && timeframe?.dateFrom) {
+          const countParams = new URLSearchParams()
+          if (accountId && accountId !== "all") {
+            countParams.set("accountId", accountId)
+          }
+          if (categoryFilter === "uncategorized") {
+            countParams.set("uncategorized", "true")
+          } else if (categoryFilter !== "all") {
+            countParams.set("categoryId", categoryFilter)
+          }
+          countParams.set("pageSize", "1")
+          const countRes = await fetch(`/api/finances/transactions?${countParams}`)
+          const countResult = await countRes.json()
+          setTotalOutsideTimeframe(countResult.pagination?.total ?? 0)
+        } else {
+          setTotalOutsideTimeframe(0)
         }
       }
     } catch (error) {
@@ -262,18 +289,16 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       })
       const result = await res.json()
       if (result.success) {
-        // Update the transaction in local state instead of refetching all
+        const newCategory = categoryId
+          ? categories.find((c) => c.id === categoryId) || null
+          : null
         setTransactions((prev) =>
-          prev.map((txn) =>
-            txn.id === transactionId
-              ? {
-                  ...txn,
-                  category: categoryId
-                    ? categories.find((c) => c.id === categoryId) || null
-                    : null,
-                }
-              : txn
-          )
+          prev.reduce<Transaction[]>((acc, txn) => {
+            if (txn.id !== transactionId) { acc.push(txn); return acc }
+            const updated = { ...txn, category: newCategory }
+            if (matchesCategoryFilter(updated)) acc.push(updated)
+            return acc
+          }, [])
         )
       }
     } catch {
@@ -302,19 +327,17 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       const result = await res.json()
 
       if (result.success) {
-        // Update transactions in local state
         const selectedIds = new Set(selected.map((t) => t.id))
+        const newCategory = categoryId
+          ? categories.find((c) => c.id === categoryId) || null
+          : null
         setTransactions((prev) =>
-          prev.map((txn) =>
-            selectedIds.has(txn.id)
-              ? {
-                  ...txn,
-                  category: categoryId
-                    ? categories.find((c) => c.id === categoryId) || null
-                    : null,
-                }
-              : txn
-          )
+          prev.reduce<Transaction[]>((acc, txn) => {
+            if (!selectedIds.has(txn.id)) { acc.push(txn); return acc }
+            const updated = { ...txn, category: newCategory }
+            if (matchesCategoryFilter(updated)) acc.push(updated)
+            return acc
+          }, [])
         )
         clearSelection()
       }
@@ -337,7 +360,11 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
       key: "date",
       label: "Date",
       sortValue: (row) => new Date(row.date).getTime(),
-      searchValue: (row) => formatDate(row.date),
+      searchValue: (row) => {
+        const d = new Date(row.date)
+        const full = d.toLocaleDateString("en-US", { month: "long" })
+        return `${full} ${formatDate(row.date)}`
+      },
       render: (_, row) => (
         <span className="whitespace-nowrap">{formatDate(row.date)}</span>
       ),
@@ -740,7 +767,25 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
               </Button>
             </>
           )}
-          emptyMessage="No transactions yet. Click 'Add Transaction' or connect a bank account to get started."
+          emptyMessage={
+            totalOutsideTimeframe > 0 && onTimeframeChange ? (
+              <div className="space-y-2">
+                <p>No transactions in this timeframe.</p>
+                <p className="text-xs">
+                  {totalOutsideTimeframe} transaction{totalOutsideTimeframe !== 1 ? "s" : ""} found outside this range.{" "}
+                  <button
+                    type="button"
+                    className="text-primary underline underline-offset-2 hover:text-primary/80"
+                    onClick={() => onTimeframeChange(getTimeframeValue("all"))}
+                  >
+                    View All Time
+                  </button>
+                </p>
+              </div>
+            ) : (
+              "No transactions yet. Click 'Add Transaction' or connect a bank account to get started."
+            )
+          }
         />
       )}
 

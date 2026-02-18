@@ -245,10 +245,13 @@ export function AccountsList() {
       const result = await res.json()
 
       if (result.success) {
-        const { added, modified, removed } = result.data
+        const { added, modified, removed, merged } = result.data
+        const parts = [`${added} added`]
+        if (merged) parts.push(`${merged} merged`)
+        parts.push(`${modified} modified`, `${removed} removed`)
         setSyncResults((prev) => ({
           ...prev,
-          [key]: `${added} added, ${modified} modified, ${removed} removed`,
+          [key]: parts.join(", "),
         }))
         fetchAccounts()
       } else if (result.loginRequired) {

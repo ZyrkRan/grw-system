@@ -127,7 +127,7 @@ export interface DataTableProps<T> {
   rowStyle?: (row: T) => React.CSSProperties | undefined
   /** Render a card for each row on mobile (below md). When provided, the table is hidden below md and cards are shown instead. */
   renderCard?: (row: T, meta: { isSelected: boolean; onToggle: () => void }) => React.ReactNode
-  emptyMessage?: string
+  emptyMessage?: React.ReactNode
   /** Extra content rendered in the toolbar between search and column filters */
   toolbarContent?: React.ReactNode
   className?: string
@@ -533,7 +533,9 @@ export function DataTable<T>({
 
   // ---- Search + column filter state ----
   const [searchQuery, setSearchQuery] = React.useState("")
+  const deferredSearchQuery = React.useDeferredValue(searchQuery)
   const [columnFilters, setColumnFilters] = React.useState<Record<string, Set<string>>>({})
+  const deferredColumnFilters = React.useDeferredValue(columnFilters)
 
   function getFilterDisplayValue(col: ColumnDef<T>, row: T): string {
     if (col.filterValue) return col.filterValue(row)
@@ -561,7 +563,7 @@ export function DataTable<T>({
     let result = data
 
     // Apply column filters
-    const activeFilters = Object.entries(columnFilters).filter(
+    const activeFilters = Object.entries(deferredColumnFilters).filter(
       ([, values]) => values.size > 0
     )
     if (activeFilters.length > 0) {
@@ -570,14 +572,14 @@ export function DataTable<T>({
           const col = colMap.get(key)
           if (!col) return true
           const val = getFilterDisplayValue(col, row)
-          return columnFilters[key].has(val)
+          return deferredColumnFilters[key].has(val)
         })
       )
     }
 
     // Apply search
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
+    if (deferredSearchQuery.trim()) {
+      const q = deferredSearchQuery.toLowerCase()
       result = result.filter((row) =>
         movableColumns.some((col) => {
           const val = col.searchValue
@@ -591,7 +593,7 @@ export function DataTable<T>({
     }
 
     return result
-  }, [data, searchQuery, columnFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, deferredSearchQuery, deferredColumnFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleColumnFilter(colKey: string, value: string) {
     setColumnFilters((prev) => {

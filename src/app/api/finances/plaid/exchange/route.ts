@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
             lastError: null,
             institutionId: institutionId || existingItem.institutionId,
             institutionName: institutionName || existingItem.institutionName,
+            webhookUrl: process.env.PLAID_WEBHOOK_URL || existingItem.webhookUrl,
           },
         })
       } else {
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
             institutionId: institutionId || null,
             institutionName: institutionName || null,
             status: "ACTIVE",
+            webhookUrl: process.env.PLAID_WEBHOOK_URL || null,
           },
         })
       }

@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: "en",
+      ...(process.env.PLAID_WEBHOOK_URL && { webhook: process.env.PLAID_WEBHOOK_URL }),
     })
 
     return NextResponse.json({
