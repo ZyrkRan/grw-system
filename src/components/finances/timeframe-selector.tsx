@@ -104,15 +104,19 @@ export function TimeframeSelector({ value, onChange }: TimeframeSelectorProps) {
     setError(null)
     if (preset === "custom") {
       // Just switch to custom mode, keep current dates
-      onChange({
-        preset: "custom",
-        dateFrom: customFromDate ? customFromDate.toISOString().split("T")[0] : value.dateFrom,
-        dateTo: customToDate ? customToDate.toISOString().split("T")[0] : value.dateTo,
-      })
+      const fromStr = customFromDate && !isNaN(customFromDate.getTime())
+        ? customFromDate.toISOString().split("T")[0]
+        : value.dateFrom
+      const toStr = customToDate && !isNaN(customToDate.getTime())
+        ? customToDate.toISOString().split("T")[0]
+        : value.dateTo
+      onChange({ preset: "custom", dateFrom: fromStr, dateTo: toStr })
     } else {
       const newValue = getTimeframeValue(preset)
-      setCustomFromDate(new Date(newValue.dateFrom))
-      setCustomToDate(new Date(newValue.dateTo))
+      const from = newValue.dateFrom ? new Date(newValue.dateFrom) : undefined
+      const to = newValue.dateTo ? new Date(newValue.dateTo) : undefined
+      setCustomFromDate(from && !isNaN(from.getTime()) ? from : undefined)
+      setCustomToDate(to && !isNaN(to.getTime()) ? to : undefined)
       onChange(newValue)
     }
   }
