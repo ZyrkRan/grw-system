@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -31,18 +31,20 @@ export function LocationPickerModal({
 }: LocationPickerModalProps) {
   const [draft, setDraft] = useState<LatLng | null>(value)
 
-  function handleOpenChange(next: boolean) {
-    if (next) setDraft(value)
-    onOpenChange(next)
-  }
+  // Sync draft when modal opens
+  useEffect(() => {
+    if (open) setDraft(value)
+  }, [open, value])
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Set Customer Location</DialogTitle>
         </DialogHeader>
-        <LocationPicker value={draft} onChange={setDraft} height="450px" />
+        <div className="flex-1 min-h-0">
+          <LocationPicker value={draft} onChange={setDraft} height="100%" />
+        </div>
         {draft && (
           <p className="text-xs text-muted-foreground">
             {draft.lat.toFixed(6)}, {draft.lng.toFixed(6)}

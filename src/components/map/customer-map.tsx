@@ -22,6 +22,9 @@ interface CustomerMapProps {
   center?: [number, number]
 }
 
+// Puerto Rico default center
+const PR_CENTER: [number, number] = [18.2208, -66.5901]
+
 export function CustomerMap({ customers, height = "500px", zoom, center }: CustomerMapProps) {
   const mapped = customers.filter(
     (c): c is CustomerPin & { latitude: number; longitude: number } =>
@@ -36,9 +39,9 @@ export function CustomerMap({ customers, height = "500px", zoom, center }: Custo
             mapped.reduce((sum, c) => sum + c.latitude, 0) / mapped.length,
             mapped.reduce((sum, c) => sum + c.longitude, 0) / mapped.length,
           ]
-        : [29.7604, -95.3698])
+        : PR_CENTER)
 
-  const defaultZoom = zoom ?? (mapped.length === 1 ? 15 : mapped.length > 1 ? 10 : 5)
+  const defaultZoom = zoom ?? (mapped.length === 1 ? 15 : mapped.length > 1 ? 10 : 9)
 
   return (
     <div style={{ height }} className="w-full">

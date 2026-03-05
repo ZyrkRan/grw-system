@@ -45,16 +45,6 @@ export default function MapPage() {
 
       {loading ? (
         <Skeleton className="h-[calc(100vh-12rem)] w-full rounded-md" />
-      ) : mapped.length === 0 ? (
-        <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-md border border-dashed">
-          <div className="text-center">
-            <MapPin className="mx-auto size-10 text-muted-foreground" />
-            <h3 className="mt-3 text-lg font-medium">No locations set</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Edit a customer and drop a pin on the map to see them here.
-            </p>
-          </div>
-        </div>
       ) : (
         <DynamicCustomerMap
           customers={customers}

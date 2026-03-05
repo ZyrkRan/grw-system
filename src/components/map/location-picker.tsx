@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet"
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 import { fixLeafletIcons } from "./fix-leaflet-icons"
@@ -29,22 +28,17 @@ function ClickHandler({ onChange }: { onChange: (coords: LatLng) => void }) {
   return null
 }
 
-function RecenterMap({ center }: { center: LatLng }) {
-  const map = useMap()
-  useEffect(() => {
-    map.setView([center.lat, center.lng], map.getZoom())
-  }, [map, center.lat, center.lng])
-  return null
-}
+// Puerto Rico default center
+const PR_CENTER: LatLng = { lat: 18.2208, lng: -66.5901 }
 
 export function LocationPicker({ value, onChange, height = "200px" }: LocationPickerProps) {
-  const defaultCenter: LatLng = { lat: 29.7604, lng: -95.3698 } // Houston, TX
-  const center = value ?? defaultCenter
-  const zoom = value ? 15 : 5
+  const center = value ?? PR_CENTER
+  const zoom = value ? 15 : 9
 
   return (
     <div className="relative" style={{ height }}>
       <MapContainer
+        key={value ? `${value.lat},${value.lng}` : "default"}
         center={[center.lat, center.lng]}
         zoom={zoom}
         className="h-full w-full rounded-md border z-0"
@@ -52,12 +46,7 @@ export function LocationPicker({ value, onChange, height = "200px" }: LocationPi
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <ClickHandler onChange={onChange} />
-        {value && (
-          <>
-            <Marker position={[value.lat, value.lng]} />
-            <RecenterMap center={value} />
-          </>
-        )}
+        {value && <Marker position={[value.lat, value.lng]} />}
       </MapContainer>
       {value && (
         <Button
