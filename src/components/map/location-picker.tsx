@@ -38,7 +38,6 @@ export function LocationPicker({ value, onChange, height = "200px" }: LocationPi
   return (
     <div className="relative" style={{ height }}>
       <MapContainer
-        key={value ? `${value.lat},${value.lng}` : "default"}
         center={[center.lat, center.lng]}
         zoom={zoom}
         className="h-full w-full rounded-md border z-0"
