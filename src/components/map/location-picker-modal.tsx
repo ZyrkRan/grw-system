@@ -38,7 +38,7 @@ export function LocationPickerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
+      <DialogContent className="max-w-[95vw] h-[93vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Set Customer Location</DialogTitle>
         </DialogHeader>
