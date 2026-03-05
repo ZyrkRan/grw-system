@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Loader2 } from "lucide-react"
+import { Loader2, Maximize2 } from "lucide-react"
+import {
+  DynamicLocationPicker,
+  DynamicLocationPickerModal,
+} from "@/components/map/dynamic-imports"
 
 interface CustomerData {
   id?: number
@@ -13,6 +17,8 @@ interface CustomerData {
   phone: string
   email: string | null
   address: string
+  latitude?: number | null
+  longitude?: number | null
   serviceInterval: number | null
   isVip?: boolean
 }
@@ -31,8 +37,13 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
     customer?.serviceInterval?.toString() ?? ""
   )
   const [isVip, setIsVip] = useState(customer?.isVip ?? false)
+  const [latitude, setLatitude] = useState<number | null>(customer?.latitude ?? null)
+  const [longitude, setLongitude] = useState<number | null>(customer?.longitude ?? null)
+  const [mapModalOpen, setMapModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
+
+  const coords = latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null
 
   const isEditing = !!customer?.id
 
@@ -62,6 +73,8 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
           address: address.trim(),
           serviceInterval: serviceInterval ? parseInt(serviceInterval, 10) : null,
           isVip,
+          latitude,
+          longitude,
         }),
       })
 
@@ -129,6 +142,44 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
           onChange={(e) => setAddress(e.target.value)}
           placeholder="123 Main St, City, ST 12345"
           required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Location</Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setMapModalOpen(true)}
+          >
+            <Maximize2 className="mr-1 size-3" />
+            Expand
+          </Button>
+        </div>
+        <DynamicLocationPicker
+          value={coords}
+          onChange={(c) => {
+            setLatitude(c?.lat ?? null)
+            setLongitude(c?.lng ?? null)
+          }}
+          height="200px"
+        />
+        {coords && (
+          <p className="text-xs text-muted-foreground">
+            {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+          </p>
+        )}
+        <DynamicLocationPickerModal
+          open={mapModalOpen}
+          onOpenChange={setMapModalOpen}
+          value={coords}
+          onConfirm={(c) => {
+            setLatitude(c?.lat ?? null)
+            setLongitude(c?.lng ?? null)
+          }}
         />
       </div>
 

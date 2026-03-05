@@ -15,6 +15,8 @@ interface CustomerData {
   phone: string
   email: string | null
   address: string
+  latitude?: number | null
+  longitude?: number | null
   serviceInterval: number | null
   isVip?: boolean
 }
@@ -41,7 +43,7 @@ export function CustomerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Edit Customer" : "Add Customer"}

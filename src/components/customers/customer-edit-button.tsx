@@ -12,6 +12,8 @@ interface CustomerData {
   phone: string
   email: string | null
   address: string
+  latitude?: number | null
+  longitude?: number | null
   serviceInterval: number | null
   isVip?: boolean
 }

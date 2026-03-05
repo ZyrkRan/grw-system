@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, MoreHorizontal, Pencil, Trash2, Loader2, Star, Check, Route as RouteIcon, Zap } from "lucide-react"
+import { Plus, MoreHorizontal, Pencil, Trash2, Loader2, Star, Check, Route as RouteIcon, Zap, List, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils"
 import { CustomerDialog } from "@/components/customers/customer-dialog"
 import { ServiceFormDialog } from "@/components/services/service-form-dialog"
 import type { DueStatus } from "@/lib/due-date"
+import { DynamicCustomerMap } from "@/components/map/dynamic-imports"
 
 interface Customer {
   id: number
@@ -33,6 +34,8 @@ interface Customer {
   phone: string
   email: string | null
   address: string
+  latitude: number | null
+  longitude: number | null
   serviceInterval: number | null
   isVip: boolean
   _count: {
@@ -58,6 +61,7 @@ interface RouteOption {
 
 export default function CustomersPage() {
   const router = useRouter()
+  const [view, setView] = useState<"table" | "map">("table")
   const [customers, setCustomers] = useState<Customer[]>([])
   const [allRoutes, setAllRoutes] = useState<RouteOption[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -528,17 +532,39 @@ export default function CustomersPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl sm:text-3xl font-bold">Customers</h1>
-        <Button onClick={handleAddCustomer}>
-          <Plus className="mr-2 size-4" />
-          Add Customer
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border">
+            <Button
+              variant={view === "table" ? "secondary" : "ghost"}
+              size="icon"
+              className="size-8 rounded-r-none"
+              onClick={() => setView("table")}
+            >
+              <List className="size-4" />
+              <span className="sr-only">Table view</span>
+            </Button>
+            <Button
+              variant={view === "map" ? "secondary" : "ghost"}
+              size="icon"
+              className="size-8 rounded-l-none"
+              onClick={() => setView("map")}
+            >
+              <MapPin className="size-4" />
+              <span className="sr-only">Map view</span>
+            </Button>
+          </div>
+          <Button onClick={handleAddCustomer}>
+            <Plus className="mr-2 size-4" />
+            Add Customer
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-      ) : (
+      ) : view === "table" ? (
         <DataTable
           storageKey="customers"
           columns={customerColumns}
@@ -560,6 +586,21 @@ export default function CustomersPage() {
             </Button>
           )}
           emptyMessage="No customers yet. Click 'Add Customer' to get started."
+        />
+      ) : customers.filter((c) => c.latitude != null && c.longitude != null).length === 0 ? (
+        <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-md border border-dashed">
+          <div className="text-center">
+            <MapPin className="mx-auto size-10 text-muted-foreground" />
+            <h3 className="mt-3 text-lg font-medium">No locations set</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Edit a customer and drop a pin on the map to see them here.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <DynamicCustomerMap
+          customers={customers}
+          height="calc(100vh - 12rem)"
         />
       )}
 

@@ -74,7 +74,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const { name, phone, email, address, serviceInterval, isVip } = body
+    const { name, phone, email, address, serviceInterval, isVip, latitude, longitude } = body
 
     const customer = await prisma.customer.update({
       where: { id: customerId },
@@ -83,6 +83,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(phone !== undefined && { phone: phone.trim() }),
         ...(email !== undefined && { email: email?.trim() || null }),
         ...(address !== undefined && { address: address.trim() }),
+        ...(latitude !== undefined && { latitude: typeof latitude === "number" ? latitude : null }),
+        ...(longitude !== undefined && { longitude: typeof longitude === "number" ? longitude : null }),
         ...(serviceInterval !== undefined && {
           serviceInterval: serviceInterval ? parseInt(serviceInterval, 10) : null,
         }),

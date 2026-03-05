@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { DueStatusBadge } from "@/components/ui/due-status-badge"
 import { computeDueDateInfo } from "@/lib/due-date"
 import { CustomerEditButton } from "@/components/customers/customer-edit-button"
+import { CustomerDetailMap } from "@/components/customers/customer-detail-map"
 
 interface CustomerDetailPageProps {
   params: Promise<{ id: string }>
@@ -99,6 +100,8 @@ export default async function CustomerDetailPage({
             phone: customer.phone,
             email: customer.email,
             address: customer.address,
+            latitude: customer.latitude,
+            longitude: customer.longitude,
             serviceInterval: customer.serviceInterval,
             isVip: customer.isVip,
           }}
@@ -150,6 +153,19 @@ export default async function CustomerDetailPage({
               </div>
             </div>
           </div>
+          {customer.latitude != null && customer.longitude != null && (
+            <div className="mt-4">
+              <CustomerDetailMap
+                customer={{
+                  id: customer.id,
+                  name: customer.name,
+                  address: customer.address,
+                  latitude: customer.latitude,
+                  longitude: customer.longitude,
+                }}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

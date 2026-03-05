@@ -15,6 +15,7 @@ import {
   LogOut,
   ChevronsUpDown,
   ChevronLeft,
+  MapPin,
 } from "lucide-react"
 
 import {
@@ -41,6 +42,7 @@ const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Customers", url: "/customers", icon: Users },
+  { title: "Map", url: "/map", icon: MapPin },
   { title: "Routes", url: "/routes", icon: Route },
   { title: "Services", url: "/services", icon: Wrench },
   { title: "Invoices", url: "/invoices", icon: FileText },

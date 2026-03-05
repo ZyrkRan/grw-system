@@ -93,6 +93,8 @@ model Customer {
   phone           String
   email           String?
   address         String
+  latitude        Float?
+  longitude       Float?
   serviceInterval Int?
   isVip           Boolean  @default(false)
   userId          String

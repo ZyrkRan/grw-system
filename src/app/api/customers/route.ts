@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, phone, email, address, serviceInterval, isVip } = body
+    const { name, phone, email, address, serviceInterval, isVip, latitude, longitude } = body
 
     if (!name || !phone || !address) {
       return NextResponse.json(
@@ -110,6 +110,8 @@ export async function POST(request: NextRequest) {
         phone: phone.trim(),
         email: email?.trim() || null,
         address: address.trim(),
+        latitude: typeof latitude === "number" ? latitude : null,
+        longitude: typeof longitude === "number" ? longitude : null,
         serviceInterval: serviceInterval ? parseInt(serviceInterval, 10) : null,
         isVip: isVip === true,
         userId: session.user.id,
