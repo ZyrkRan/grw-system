@@ -70,11 +70,13 @@ function formatCurrency(value: number | string | null | undefined): string {
 }
 
 function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString()
+  const d = new Date(dateString)
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).toLocaleDateString()
 }
 
 function formatDateSearchable(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
+  const d = new Date(dateString)
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
