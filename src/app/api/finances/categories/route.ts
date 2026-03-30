@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { createCategorySchema, formatZodError } from "@/lib/validations/finances"
 import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
+import { ensureSystemGroups } from "@/lib/system-categories"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -13,6 +14,14 @@ export async function GET(request: NextRequest) {
   const userId = session.user!.id!
 
   try {
+    // Ensure Personal/Business system groups exist (non-blocking — don't fail the whole request)
+    try {
+      await ensureSystemGroups(userId)
+      // Note: migrateExistingCategories removed — all categories are already properly placed
+    } catch (err) {
+      console.error("Failed to ensure system groups:", err)
+    }
+
     // Include user-owned categories and default categories (userId is null)
     const categories = await prisma.transactionCategory.findMany({
       where: {
@@ -31,6 +40,12 @@ export async function GET(request: NextRequest) {
           orderBy: { position: "asc" },
           include: {
             _count: { select: { transactions: true } },
+            children: {
+              orderBy: { position: "asc" },
+              include: {
+                _count: { select: { transactions: true } },
+              },
+            },
           },
         },
       },
