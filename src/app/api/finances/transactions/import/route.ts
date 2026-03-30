@@ -179,11 +179,41 @@ export async function POST(request: NextRequest) {
 
     // Bulk insert
     let importedCount = 0
+    let ruleCategorized = 0
+    let billsMatched = 0
+
     if (transactionsToInsert.length > 0) {
       const result = await prisma.bankTransaction.createMany({
         data: transactionsToInsert,
       })
       importedCount = result.count
+
+      // Auto-categorize and auto-match bills for imported transactions
+      try {
+        // Fetch the IDs of just-imported transactions (no plaidTransactionId, recent)
+        const imported = await prisma.bankTransaction.findMany({
+          where: {
+            accountId,
+            userId,
+            plaidTransactionId: null,
+            categoryId: null,
+            createdAt: { gte: new Date(Date.now() - 10000) }, // Last 10 seconds
+          },
+          select: { id: true },
+          take: transactionsToInsert.length,
+        })
+
+        const importedIds = imported.map((t) => t.id)
+
+        const { autoCategorizeTransactions, autoMatchBills } = await import("@/lib/auto-categorize")
+        const catResult = await autoCategorizeTransactions(userId, importedIds)
+        ruleCategorized = catResult.categorized
+
+        const billResult = await autoMatchBills(userId, importedIds)
+        billsMatched = billResult.matched
+      } catch (err) {
+        console.error("Auto-categorize/bill-match on import failed (non-fatal):", err)
+      }
     }
 
     return NextResponse.json({
@@ -191,6 +221,8 @@ export async function POST(request: NextRequest) {
       data: {
         imported: importedCount,
         skipped: skippedCount,
+        ruleCategorized,
+        billsMatched,
         errors,
       },
     })

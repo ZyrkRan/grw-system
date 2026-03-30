@@ -271,13 +271,29 @@ export async function POST(request: NextRequest) {
     }, { timeout: 15000 })
 
     // Apply categorization rules to newly added uncategorized transactions
+    let ruleCategorized = 0
+    let billsMatched = 0
+
     if (addedCount > 0) {
       await applyCategorizationRules(userId, addedPlaidIds)
+
+      // Auto-match bills for newly synced transactions
+      try {
+        const { autoMatchBills } = await import("@/lib/auto-categorize")
+        const newTxns = await prisma.bankTransaction.findMany({
+          where: { plaidTransactionId: { in: addedPlaidIds } },
+          select: { id: true },
+        })
+        const result = await autoMatchBills(userId, newTxns.map((t) => t.id))
+        billsMatched = result.matched
+      } catch (err) {
+        console.error("Bill auto-match failed (non-fatal):", err)
+      }
     }
 
     return NextResponse.json({
       success: true,
-      data: { added: addedCount, modified: modifiedCount, removed: removedCount },
+      data: { added: addedCount, modified: modifiedCount, removed: removedCount, billsMatched },
     })
   } catch (error: unknown) {
     const plaidError = (error as { response?: { data?: unknown } })?.response?.data

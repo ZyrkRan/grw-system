@@ -67,6 +67,7 @@ model User {
   deletedPlaidTransactions DeletedPlaidTransaction[]
   transactionAttachments   TransactionAttachment[]
   routes                   Route[]
+  bills                    Bill[]
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -81,6 +82,8 @@ model Settings {
   companyPhone   String?
   companyEmail   String?
   companyWebsite String?
+  ollamaUrl      String?
+  ollamaModel    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -248,6 +251,7 @@ model BankAccount {
   plaidItem    PlaidItem?        @relation(fields: [plaidItemId], references: [id])
   user         User              @relation(fields: [userId], references: [id])
   transactions BankTransaction[]
+  bills        Bill[]
 }
 
 // ─── BankTransaction ─────────────────────────────────────────────────────────
@@ -279,6 +283,7 @@ model BankTransaction {
   category    TransactionCategory?      @relation(fields: [categoryId], references: [id])
   user        User                      @relation(fields: [userId], references: [id])
   attachments TransactionAttachment[]
+  billPayment BillPayment?
 }
 
 // ─── DeletedPlaidTransaction ─────────────────────────────────────────────────
@@ -324,6 +329,7 @@ model TransactionCategory {
   slug             String
   color            String
   isDefault        Boolean  @default(false)
+  isSystemGroup    Boolean  @default(false)
   position         Int      @default(0)
   parentId         Int?
   isGroup          Boolean  @default(false)
@@ -336,6 +342,7 @@ model TransactionCategory {
   children            TransactionCategory[] @relation("CategoryParent")
   parent              TransactionCategory?  @relation("CategoryParent", fields: [parentId], references: [id])
   user                User?                 @relation(fields: [userId], references: [id])
+  bills               Bill[]
 }
 
 // ─── CategorizationRule ──────────────────────────────────────────────────────
@@ -350,6 +357,59 @@ model CategorizationRule {
 
   user     User                @relation(fields: [userId], references: [id])
   category TransactionCategory @relation(fields: [categoryId], references: [id])
+}
+
+// ─── Bill ──────────────────────────────────────────────────────────────────
+
+enum BillFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+model Bill {
+  id          Int           @id @default(autoincrement())
+  userId      String
+  name        String
+  expectedAmount Decimal    @db.Decimal(10, 2)
+  dueDay      Int           // 1-31, day of period when bill is due
+  frequency   BillFrequency @default(MONTHLY)
+  categoryId  Int?
+  accountId   Int?          // Which account this bill is typically paid from
+  isAutoPay   Boolean       @default(false)
+  isActive    Boolean       @default(true)
+  matchPattern String?      // Regex pattern to auto-match transactions
+  notes       String?
+  color       String?       // For visual identification
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user     User                 @relation(fields: [userId], references: [id])
+  category TransactionCategory? @relation(fields: [categoryId], references: [id])
+  account  BankAccount?         @relation(fields: [accountId], references: [id])
+  payments BillPayment[]
+
+  @@index([userId, isActive])
+}
+
+model BillPayment {
+  id            Int       @id @default(autoincrement())
+  billId        Int
+  periodStart   DateTime  // Start of the billing period (e.g., 2026-03-01 for March)
+  paidAt        DateTime? // When it was actually paid (null = unpaid)
+  actualAmount  Decimal?  @db.Decimal(10, 2)
+  transactionId Int?      @unique // Link to matched bank transaction
+  status        String    @default("pending") // pending, paid, overdue, skipped
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  bill        Bill             @relation(fields: [billId], references: [id], onDelete: Cascade)
+  transaction BankTransaction? @relation(fields: [transactionId], references: [id])
+
+  @@unique([billId, periodStart])
+  @@index([billId, status])
 }
 
 // ─── Route ─────────────────────────────────────────────────────────────────

@@ -172,6 +172,45 @@ export const updateRuleSchema = z.object({
 }).refine((data) => Object.keys(data).length > 0, "At least one field must be provided")
 
 // ---------------------------------------------------------------------------
+// Bills
+// ---------------------------------------------------------------------------
+
+const billFrequency = z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "ANNUAL"])
+
+export const createBillSchema = z.object({
+  name: trimmedString(200),
+  expectedAmount: positiveDecimal,
+  dueDay: z.coerce.number().int().min(1).max(31),
+  frequency: billFrequency.default("MONTHLY"),
+  categoryId: optionalIntId,
+  accountId: optionalIntId,
+  isAutoPay: z.boolean().default(false),
+  matchPattern: optionalTrimmedString(500),
+  notes: optionalTrimmedString(2000),
+  color: hexColor.optional(),
+})
+
+export const updateBillSchema = z.object({
+  name: trimmedString(200).optional(),
+  expectedAmount: positiveDecimal.optional(),
+  dueDay: z.coerce.number().int().min(1).max(31).optional(),
+  frequency: billFrequency.optional(),
+  categoryId: z.coerce.number().int().positive().nullable().optional(),
+  accountId: z.coerce.number().int().positive().nullable().optional(),
+  isAutoPay: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  matchPattern: z.string().max(500).transform((s) => s.trim() || null).nullable().optional(),
+  notes: z.string().max(2000).transform((s) => s.trim() || null).nullable().optional(),
+  color: hexColor.nullable().optional(),
+}).refine((data) => Object.keys(data).length > 0, "At least one field must be provided")
+
+export const updateBillPaymentSchema = z.object({
+  status: z.enum(["pending", "paid", "overdue", "skipped"]).optional(),
+  actualAmount: z.coerce.number().positive().optional(),
+  transactionId: z.coerce.number().int().positive().nullable().optional(),
+})
+
+// ---------------------------------------------------------------------------
 // Plaid
 // ---------------------------------------------------------------------------
 
