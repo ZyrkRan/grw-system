@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { plaidClient } from "@/lib/plaid"
+import { encrypt } from "@/lib/encryption"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
     })
 
     const { access_token: accessToken, item_id: itemId } = exchangeResponse.data
+    const encryptedToken = encrypt(accessToken)
 
     // Upsert PlaidItem and accounts in a transaction (handles reconnects)
     const result = await prisma.$transaction(async (tx) => {
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
         plaidItem = await tx.plaidItem.update({
           where: { id: existingItem.id },
           data: {
-            accessToken,
+            accessToken: encryptedToken,
             status: "ACTIVE",
             lastError: null,
             institutionId: institutionId || existingItem.institutionId,
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
           data: {
             userId,
             itemId,
-            accessToken,
+            accessToken: encryptedToken,
             institutionId: institutionId || null,
             institutionName: institutionName || null,
             status: "ACTIVE",

@@ -4,10 +4,11 @@ import { useState } from "react"
 import { useOllama } from "@/hooks/use-ollama"
 import {
   categorizeTransactions,
-  type CategorizationResult,
   type TransactionInput,
   type CategoryOption,
 } from "@/lib/ai/categorize"
+export type { CategorizationResult } from "@/lib/ai/categorize"
+import type { CategorizationResult } from "@/lib/ai/categorize"
 import type { Transaction, CategoryRef } from "@/hooks/use-transactions"
 
 interface UseAiCategorizeProps {

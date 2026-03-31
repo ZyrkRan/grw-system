@@ -57,12 +57,17 @@ export async function PATCH(request: NextRequest) {
       if (
         !password ||
         typeof password !== "string" ||
-        password.length < 6
+        password.length < 8 ||
+        !/[a-z]/.test(password) ||
+        !/[A-Z]/.test(password) ||
+        !/[0-9]/.test(password) ||
+        !/[^a-zA-Z0-9]/.test(password)
       ) {
         return NextResponse.json(
           {
             success: false,
-            error: "Password must be at least 6 characters",
+            error:
+              "Password must be at least 8 characters with uppercase, lowercase, number, and special character",
           },
           { status: 400 }
         )

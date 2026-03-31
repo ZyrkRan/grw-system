@@ -6,6 +6,7 @@ import { plaidClient } from "@/lib/plaid"
 import { RemovedTransaction, Transaction } from "plaid"
 import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 import { plaidSyncSchema, formatZodError } from "@/lib/validations/finances"
+import { decryptToken } from "@/lib/encryption"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -47,6 +48,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Decrypt the access token for Plaid API calls
+    const accessToken = decryptToken(plaidItem.accessToken)
+
     // Build a map of plaidAccountId -> bankAccount.id
     const accountMap = new Map<string, number>()
     for (const ba of plaidItem.bankAccounts) {
@@ -58,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Request fresh data from the bank (best-effort, don't block on failure)
     try {
       await plaidClient.transactionsRefresh({
-        access_token: plaidItem.accessToken,
+        access_token: accessToken,
       })
     } catch (refreshError) {
       console.warn("[Sync] transactionsRefresh failed (proceeding with sync):", refreshError)
@@ -67,7 +71,7 @@ export async function POST(request: NextRequest) {
     // Fetch transaction updates and balances in parallel
     // Balance fetch is independent of transactions — no need to wait
     const balancePromise = plaidClient.accountsBalanceGet({
-      access_token: plaidItem.accessToken,
+      access_token: accessToken,
     })
 
     let cursor = plaidItem.cursor || undefined
@@ -78,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     while (hasMore) {
       const response = await plaidClient.transactionsSync({
-        access_token: plaidItem.accessToken,
+        access_token: accessToken,
         cursor: cursor,
       })
 
