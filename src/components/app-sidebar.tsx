@@ -14,6 +14,7 @@ import {
   LogOut,
   ChevronsUpDown,
   ChevronLeft,
+  Sparkles,
 } from "lucide-react"
 
 import {
@@ -22,10 +23,12 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar"
 import {
@@ -36,13 +39,20 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
-const navItems = [
+const mainNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Customers", url: "/customers", icon: Users },
   { title: "Routes", url: "/routes", icon: Route },
   { title: "Services", url: "/services", icon: Wrench },
   { title: "Invoices", url: "/invoices", icon: FileText },
+]
+
+const moneyNavItems = [
   { title: "Finances", url: "/finances", icon: DollarSign },
+  { title: "AI Insights", url: "/ai", icon: Sparkles },
+]
+
+const bottomNavItems = [
   { title: "Settings", url: "/settings", icon: Settings },
 ]
 
@@ -115,13 +125,73 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
+          <SidebarGroupLabel>Main</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {mainNavItems.map((item) => {
                 const isActive =
                   item.url === "/"
                     ? pathname === "/"
                     : pathname.startsWith(item.url)
+
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      size="lg"
+                      tooltip={item.title}
+                      className="group-data-[collapsible=icon]:!size-10 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:justify-center"
+                    >
+                      <Link href={item.url}>
+                        <item.icon className="size-5 group-data-[collapsible=icon]:!size-6" />
+                        <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Money</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {moneyNavItems.map((item) => {
+                const isActive = pathname.startsWith(item.url)
+
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      size="lg"
+                      tooltip={item.title}
+                      className="group-data-[collapsible=icon]:!size-10 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:justify-center"
+                    >
+                      <Link href={item.url}>
+                        <item.icon className="size-5 group-data-[collapsible=icon]:!size-6" />
+                        <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {bottomNavItems.map((item) => {
+                const isActive = pathname.startsWith(item.url)
 
                 return (
                   <SidebarMenuItem key={item.title}>

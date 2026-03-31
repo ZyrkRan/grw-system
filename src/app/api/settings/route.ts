@@ -65,6 +65,8 @@ export async function PATCH(request: NextRequest) {
       "companyPhone",
       "companyEmail",
       "companyWebsite",
+      "ollamaUrl",
+      "ollamaModel",
     ]
 
     // Filter to only allowed fields

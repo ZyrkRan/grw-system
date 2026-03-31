@@ -10,7 +10,9 @@ import { DatePicker } from "@/components/ui/date-picker"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -34,6 +36,7 @@ interface CategoryRef {
   name: string
   color: string
   attachmentPrompt?: boolean
+  groupName?: string
 }
 
 interface AttachmentData {
@@ -118,10 +121,27 @@ export function TransactionDialog({
         if (accResult.success) setAccounts(accResult.data)
         if (catResult.success) {
           const flat: CategoryRef[] = []
-          for (const cat of catResult.data) {
-            flat.push({ id: cat.id, name: cat.name, color: cat.color, attachmentPrompt: cat.attachmentPrompt })
-            if (cat.children) {
-              for (const child of cat.children) {
+          for (const root of catResult.data) {
+            if (root.isSystemGroup) {
+              // System group (Business/Personal) — include itself as assignable + traverse children
+              const groupName = root.name as string
+              flat.push({ id: root.id, name: root.name, color: root.color, attachmentPrompt: root.attachmentPrompt, groupName })
+              if (root.children) {
+                for (const child of root.children) {
+                  if (!child.isGroup) {
+                    flat.push({ id: child.id, name: child.name, color: child.color, attachmentPrompt: child.attachmentPrompt, groupName })
+                  }
+                  if (child.children) {
+                    for (const leaf of child.children) {
+                      flat.push({ id: leaf.id, name: leaf.name, color: leaf.color, attachmentPrompt: leaf.attachmentPrompt, groupName })
+                    }
+                  }
+                }
+              }
+            } else if (!root.isGroup) {
+              flat.push({ id: root.id, name: root.name, color: root.color, attachmentPrompt: root.attachmentPrompt })
+            } else if (root.children) {
+              for (const child of root.children) {
                 flat.push({ id: child.id, name: child.name, color: child.color, attachmentPrompt: child.attachmentPrompt })
               }
             }
@@ -331,17 +351,51 @@ export function TransactionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Category</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="inline-block size-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: c.color }}
-                          />
-                          {c.name}
-                        </span>
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      const businessCats = categories.filter((c) => c.groupName === "Business")
+                      const personalCats = categories.filter((c) => c.groupName === "Personal")
+                      const otherCats = categories.filter((c) => !c.groupName)
+                      const hasMultipleGroups = [businessCats, personalCats, otherCats].filter((g) => g.length > 0).length > 1
+
+                      return (
+                        <>
+                          {otherCats.map((c) => (
+                            <SelectItem key={c.id} value={String(c.id)}>
+                              <span className="flex items-center gap-2">
+                                <span className="inline-block size-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+                                {c.name}
+                              </span>
+                            </SelectItem>
+                          ))}
+                          {businessCats.length > 0 && (
+                            <SelectGroup>
+                              {hasMultipleGroups && <SelectLabel className="text-xs text-muted-foreground uppercase tracking-wide">Business</SelectLabel>}
+                              {businessCats.map((c) => (
+                                <SelectItem key={c.id} value={String(c.id)}>
+                                  <span className="flex items-center gap-2">
+                                    <span className="inline-block size-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+                                    {c.name}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                          {personalCats.length > 0 && (
+                            <SelectGroup>
+                              {hasMultipleGroups && <SelectLabel className="text-xs text-muted-foreground uppercase tracking-wide">Personal</SelectLabel>}
+                              {personalCats.map((c) => (
+                                <SelectItem key={c.id} value={String(c.id)}>
+                                  <span className="flex items-center gap-2">
+                                    <span className="inline-block size-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+                                    {c.name}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                        </>
+                      )
+                    })()}
                   </SelectContent>
                 </Select>
               </div>

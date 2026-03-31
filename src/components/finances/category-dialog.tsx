@@ -101,6 +101,10 @@ export function CategoryDialog({
       setError("Color is required.")
       return
     }
+    if (!isGroup && (!parentId || parentId === "none")) {
+      setError("Please select a parent group (Personal or Business).")
+      return
+    }
 
     setIsSubmitting(true)
 
@@ -237,13 +241,12 @@ export function CategoryDialog({
 
           {!isGroup && availableGroups.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="cat-parent">Parent Group</Label>
+              <Label htmlFor="cat-parent">Parent Group *</Label>
               <Select value={parentId} onValueChange={setParentId}>
                 <SelectTrigger id="cat-parent" className="w-full">
-                  <SelectValue placeholder="No parent (top-level)" />
+                  <SelectValue placeholder="Select a parent group" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No parent (top-level)</SelectItem>
                   {availableGroups.map((g) => (
                     <SelectItem key={g.id} value={String(g.id)}>
                       <span className="flex items-center gap-2">

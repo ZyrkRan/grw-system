@@ -180,10 +180,12 @@ function InflowOutflowSkeleton() {
 export function InflowOutflowChart({
   accountId,
   timeframe,
+  categoryGroup = "all",
   compact = false,
 }: {
   accountId?: string
   timeframe: TimeframeValue
+  categoryGroup?: "all" | "business" | "personal"
   compact?: boolean
 }) {
   const [data, setData] = useState<InflowOutflowData | null>(null)
@@ -200,13 +202,30 @@ export function InflowOutflowChart({
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
+      if (categoryGroup && categoryGroup !== "all") {
+        params.set("categoryGroup", categoryGroup)
+      }
       const res = await fetch(`/api/finances/analytics/inflow-outflow?${params}`)
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`)
       }
       const result = await res.json()
       if (result.success) {
-        setData(result.data)
+        // Ensure all numeric values are valid numbers to prevent Recharts NaN rect errors
+        const sanitized = {
+          ...result.data,
+          points: (result.data.points || []).map((p: InflowOutflowPoint) => ({
+            ...p,
+            inflow: Number(p.inflow) || 0,
+            outflow: Number(p.outflow) || 0,
+          })),
+          summary: {
+            totalInflow: Number(result.data.summary?.totalInflow) || 0,
+            totalOutflow: Number(result.data.summary?.totalOutflow) || 0,
+            netChange: Number(result.data.summary?.netChange) || 0,
+          },
+        }
+        setData(sanitized)
       } else {
         setError(true)
       }
@@ -216,7 +235,7 @@ export function InflowOutflowChart({
     } finally {
       setLoading(false)
     }
-  }, [timeframe, accountId])
+  }, [timeframe, accountId, categoryGroup])
 
   useEffect(() => {
     fetchData()
@@ -318,7 +337,7 @@ export function InflowOutflowChart({
                       tickLine={false}
                       axisLine={false}
                       interval={0}
-                      height={tickMeta ? 45 : undefined}
+                      height={tickMeta ? 45 : 30}
                       tick={(props: any) => (
                         <CustomXAxisTick {...props} tickMeta={tickMeta} fontSize={11} />
                       )}
@@ -329,6 +348,7 @@ export function InflowOutflowChart({
                       tickLine={false}
                       width={60}
                       tick={{ fontSize: 11 }}
+                      domain={[0, (max: number) => max || 1]}
                     />
                     <ChartTooltip content={<CustomTooltip />} />
                     <Bar
@@ -416,7 +436,7 @@ export function InflowOutflowChart({
                     tickLine={false}
                     axisLine={false}
                     interval={0}
-                    height={tickMeta ? 50 : undefined}
+                    height={tickMeta ? 50 : 30}
                     tick={(props: any) => (
                       <CustomXAxisTick {...props} tickMeta={tickMeta} />
                     )}
@@ -426,6 +446,7 @@ export function InflowOutflowChart({
                     axisLine={false}
                     tickLine={false}
                     width={70}
+                    domain={[0, (max: number) => max || 1]}
                   />
                   <ChartTooltip content={<CustomTooltip />} />
                   <ChartLegend content={<ChartLegendContent />} />

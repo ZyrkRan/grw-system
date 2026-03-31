@@ -23,8 +23,10 @@ import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { Badge } from "@/components/ui/badge"
 import { DueStatusBadge } from "@/components/ui/due-status-badge"
 import { cn } from "@/lib/utils"
-import { CustomerDialog } from "@/components/customers/customer-dialog"
-import { ServiceFormDialog } from "@/components/services/service-form-dialog"
+import dynamic from "next/dynamic"
+
+const CustomerDialog = dynamic(() => import("@/components/customers/customer-dialog").then((m) => m.CustomerDialog))
+const ServiceFormDialog = dynamic(() => import("@/components/services/service-form-dialog").then((m) => m.ServiceFormDialog))
 import type { DueStatus } from "@/lib/due-date"
 
 interface Customer {

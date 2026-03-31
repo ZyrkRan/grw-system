@@ -13,7 +13,7 @@ Single-user service management CRM for a service business. Core operational loop
 - **Database:** Prisma 7 + PostgreSQL
 - **Auth:** NextAuth v5 (email/password, JWT sessions)
 - **Banking:** Plaid SDK + react-plaid-link
-- **Automation:** n8n webhooks
+- **AI:** Ollama (local LLM, client-side calls)
 - **Other:** react-hook-form + zod, @dnd-kit, next-themes, Lucide React icons
 
 ## Modules
@@ -111,11 +111,13 @@ Key conventions:
 - Relink and update flows
 - Auto-categorization on sync
 
-### n8n (`src/lib/n8n.ts`)
-- Webhook receiver at `/api/webhooks/n8n`
-- Supported actions: `ping`, `create_customer`, `update_service_status`
-- Outbound trigger function: `triggerN8nWebhook(event, data)`
-- Secret-based validation
+### Ollama (`src/lib/ollama.ts`, `src/lib/ai/categorize.ts`)
+- Client-side only — browser calls local Ollama instance directly
+- Configurable URL and model (persisted in localStorage)
+- Health check, model listing, non-streaming generation
+- AI transaction categorization: structured prompt → JSON response → review → apply
+- Settings UI for connection status, URL, and model selection
+- API route `POST /api/finances/transactions/ai-categorize` saves approved suggestions
 
 ### NextAuth v5 (`src/lib/auth.ts`)
 - Credentials provider (email/password with bcrypt)
@@ -146,6 +148,7 @@ All routes auth-protected via `auth()` session check:
 - `/api/finances/categories` — GET, POST
 - `/api/finances/categories/[id]` — GET, PATCH, DELETE
 - `/api/finances/categories/reorder` — POST
+- `/api/finances/transactions/ai-categorize` — POST
 - `/api/finances/categorization-rules` — GET, POST
 - `/api/finances/categorization-rules/[id]` — GET, PATCH, DELETE
 - `/api/finances/plaid` — GET
@@ -156,8 +159,6 @@ All routes auth-protected via `auth()` session check:
 - `/api/finances/plaid/update-link/callback` — POST
 - `/api/settings` — GET, PATCH
 - `/api/user` — GET
-- `/api/webhooks/n8n` — POST
-
 ## Shared UI Components
 
 - **DataTable** (`src/components/ui/data-table.tsx`) — Advanced table with sorting (localStorage-persisted), filtering, column visibility, drag-and-drop column reorder, bulk selection, search, pagination, pinned columns

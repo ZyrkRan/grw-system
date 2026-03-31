@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { AppSidebar } from "@/components/app-sidebar"
+import { GlobalChatButton } from "@/components/ai/global-chat-button"
 import {
   SidebarProvider,
   SidebarInset,
@@ -30,7 +31,8 @@ export default async function DashboardLayout({
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1 md:hidden" />
           <Separator orientation="vertical" className="mr-2 h-4 md:hidden" />
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <GlobalChatButton />
             <ThemeToggle />
           </div>
         </header>

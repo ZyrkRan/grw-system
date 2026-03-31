@@ -28,8 +28,10 @@ interface CategoryChild {
   color: string
   isDefault: boolean
   isGroup: boolean
+  isSystemGroup?: boolean
   parentId: number | null
   _count: { transactions: number }
+  children?: CategoryChild[]
 }
 
 interface Category {
@@ -38,6 +40,7 @@ interface Category {
   slug: string
   color: string
   isDefault: boolean
+  isSystemGroup?: boolean
   position: number
   parentId: number | null
   isGroup: boolean
@@ -61,6 +64,7 @@ export function CategoriesManager() {
   const [categories, setCategories] = useState<Category[]>([])
   const [rules, setRules] = useState<Rule[]>([])
   const [isLoadingCategories, setIsLoadingCategories] = useState(true)
+  const [categoriesError, setCategoriesError] = useState(false)
   const [isLoadingRules, setIsLoadingRules] = useState(true)
 
   // Category dialogs
@@ -78,14 +82,19 @@ export function CategoriesManager() {
 
   const fetchCategories = useCallback(async () => {
     setIsLoadingCategories(true)
+    setCategoriesError(false)
     try {
       const res = await fetch("/api/finances/categories")
       const result = await res.json()
       if (result.success) {
         setCategories(result.data)
+      } else {
+        console.error("Categories API error:", result.error)
+        setCategoriesError(true)
       }
     } catch (error) {
       console.error("Failed to fetch categories:", error)
+      setCategoriesError(true)
     } finally {
       setIsLoadingCategories(false)
     }
@@ -138,6 +147,7 @@ export function CategoriesManager() {
   }
 
   function handleDeleteCategoryClick(category: Category | CategoryChild) {
+    if (category.isSystemGroup) return
     setDeleteCategoryTarget(category)
     setDeleteCategoryError("")
   }
@@ -275,6 +285,17 @@ export function CategoriesManager() {
                 <Skeleton className="h-4 w-16 ml-auto" />
               </div>
             ))}
+          </div>
+        ) : categoriesError ? (
+          <div className="flex flex-col items-center justify-center rounded-md border py-12">
+            <Tag className="size-12 text-muted-foreground mb-4" />
+            <p className="text-lg font-medium">Failed to load categories</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Something went wrong. Please try again.
+            </p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={fetchCategories}>
+              Retry
+            </Button>
           </div>
         ) : categories.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-md border py-12">

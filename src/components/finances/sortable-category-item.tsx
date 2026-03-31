@@ -145,7 +145,7 @@ export function SortableCategoryItem({
         <span className="ml-auto text-sm text-muted-foreground">
           {category._count.transactions} txn{category._count.transactions !== 1 ? "s" : ""}
         </span>
-        <div className="flex gap-1">
+        <div className="flex gap-1" onPointerDown={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
             size="icon"

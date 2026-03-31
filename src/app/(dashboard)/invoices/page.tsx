@@ -29,7 +29,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
-import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog"
+import dynamic from "next/dynamic"
+
+const InvoiceFormDialog = dynamic(() => import("@/components/invoices/invoice-form-dialog").then((m) => m.InvoiceFormDialog))
 
 interface InvoiceItem {
   id: number

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-
-type Granularity = "daily" | "weekly" | "monthly"
+import {
+  Granularity,
+  toBucketKey,
+  generateBucketKeys,
+  formatBucketLabel,
+  parseAnalyticsParams,
+} from "@/lib/analytics-utils"
 
 function getStartDate(granularity: Granularity): Date {
   const now = new Date()
@@ -16,82 +21,6 @@ function getStartDate(granularity: Granularity): Date {
   }
 }
 
-function toBucketKey(date: Date, granularity: Granularity): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, "0")
-  const d = String(date.getDate()).padStart(2, "0")
-
-  switch (granularity) {
-    case "daily":
-      return `${y}-${m}-${d}`
-    case "weekly": {
-      // Get Monday of the week
-      const day = date.getDay()
-      const diff = day === 0 ? -6 : 1 - day
-      const monday = new Date(y, date.getMonth(), date.getDate() + diff)
-      const my = monday.getFullYear()
-      const mm = String(monday.getMonth() + 1).padStart(2, "0")
-      const md = String(monday.getDate()).padStart(2, "0")
-      return `${my}-${mm}-${md}`
-    }
-    case "monthly":
-      return `${y}-${m}`
-  }
-}
-
-function generateBucketKeys(start: Date, end: Date, granularity: Granularity): string[] {
-  const keys: string[] = []
-  const current = new Date(start)
-
-  switch (granularity) {
-    case "daily":
-      while (current <= end) {
-        keys.push(toBucketKey(current, granularity))
-        current.setDate(current.getDate() + 1)
-      }
-      break
-    case "weekly": {
-      // Align to Monday
-      const day = current.getDay()
-      const diff = day === 0 ? -6 : 1 - day
-      current.setDate(current.getDate() + diff)
-      while (current <= end) {
-        keys.push(toBucketKey(current, granularity))
-        current.setDate(current.getDate() + 7)
-      }
-      break
-    }
-    case "monthly":
-      current.setDate(1)
-      while (current <= end) {
-        keys.push(toBucketKey(current, granularity))
-        current.setMonth(current.getMonth() + 1)
-      }
-      break
-  }
-
-  return keys
-}
-
-function formatLabel(key: string, granularity: Granularity): string {
-  const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
-  switch (granularity) {
-    case "daily": {
-      const [, m, d] = key.split("-")
-      return `${SHORT_MONTHS[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`
-    }
-    case "weekly": {
-      const [, m, d] = key.split("-")
-      return `${SHORT_MONTHS[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`
-    }
-    case "monthly": {
-      const [y, m] = key.split("-")
-      return `${SHORT_MONTHS[parseInt(m, 10) - 1]} ${y}`
-    }
-  }
-}
-
 export async function GET(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
@@ -99,47 +28,23 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = session.user!.id!
-  const searchParams = request.nextUrl.searchParams
-
-  const granularity = (["daily", "weekly", "monthly"].includes(searchParams.get("granularity") || "")
-    ? searchParams.get("granularity")
-    : "daily") as Granularity
-
-  const accountIdParam = searchParams.get("accountId")
-  const accountId = accountIdParam && accountIdParam !== "all" ? parseInt(accountIdParam, 10) : null
-  if (accountId !== null && isNaN(accountId)) {
-    return NextResponse.json({ success: false, error: "Invalid account ID" }, { status: 400 })
-  }
-
-  // Use dateFrom/dateTo if provided, otherwise use granularity-based calculation
-  const dateFromParam = searchParams.get("dateFrom")
-  const dateToParam = searchParams.get("dateTo")
 
   let startDate: Date
   let endDate: Date
+  let accountId: number | null
+  let granularity: Granularity
+  let baseWhere: any
 
-  if (dateFromParam && dateToParam) {
-    // Parse date strings in local timezone to avoid UTC offset issues
-    const [fromYear, fromMonth, fromDay] = dateFromParam.split("-").map(Number)
-    const [toYear, toMonth, toDay] = dateToParam.split("-").map(Number)
-    startDate = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
-    endDate = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
-  } else {
-    // All Time: find earliest transaction date
-    const earliest = await prisma.bankTransaction.findFirst({
-      where: { userId },
-      orderBy: { date: "asc" },
-      select: { date: true },
-    })
-    startDate = earliest ? new Date(earliest.date) : getStartDate(granularity)
-    startDate.setHours(0, 0, 0, 0)
-    endDate = new Date()
-    endDate.setHours(23, 59, 59, 999)
-  }
-
-  const baseWhere = {
-    userId,
-    ...(accountId ? { accountId } : {}),
+  try {
+    const params = await parseAnalyticsParams(request, userId)
+    startDate = params.startDate
+    endDate = params.endDate
+    accountId = params.accountId
+    granularity = params.granularity
+    baseWhere = params.baseWhere
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid parameters"
+    return NextResponse.json({ success: false, error: message }, { status: 400 })
   }
 
   try {
@@ -192,7 +97,7 @@ export async function GET(request: NextRequest) {
       const balance = Math.round(running * 100) / 100
       if (balance > high) high = balance
       if (balance < low) low = balance
-      points.push({ date: key, balance, label: formatLabel(key, granularity) })
+      points.push({ date: key, balance, label: formatBucketLabel(key, granularity) })
     }
 
     // Anchor to real bank balances if available

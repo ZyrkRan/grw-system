@@ -20,7 +20,9 @@ import {
 } from "@/components/ui/dialog"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { Badge } from "@/components/ui/badge"
-import { RouteDialog } from "@/components/routes/route-dialog"
+import dynamic from "next/dynamic"
+
+const RouteDialog = dynamic(() => import("@/components/routes/route-dialog").then((m) => m.RouteDialog))
 
 interface Route {
   id: number

@@ -456,6 +456,7 @@ function CategoryTrendChart({
                 stackId="a"
                 fill={`var(--color-${key})`}
                 radius={idx === sanitizedCategories.length - 1 ? [2, 2, 0, 0] : [0, 0, 0, 0]}
+                minPointSize={1}
               />
             ))}
           </BarChart>
@@ -612,10 +613,12 @@ interface DialogTransaction {
 export function CategoryAnalytics({
   accountId,
   timeframe,
+  categoryGroup = "all",
   compact = false,
 }: {
   accountId?: string
   timeframe: TimeframeValue
+  categoryGroup?: "all" | "business" | "personal"
   compact?: boolean
 }) {
   const [data, setData] = useState<AnalyticsData | null>(null)
@@ -640,6 +643,9 @@ export function CategoryAnalytics({
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
+      if (categoryGroup && categoryGroup !== "all") {
+        params.set("categoryGroup", categoryGroup)
+      }
       const res = await fetch(`/api/finances/analytics/category?${params}`)
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`)
@@ -656,7 +662,7 @@ export function CategoryAnalytics({
     } finally {
       setLoading(false)
     }
-  }, [timeframe, accountId])
+  }, [timeframe, accountId, categoryGroup])
 
   useEffect(() => {
     fetchData()

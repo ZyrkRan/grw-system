@@ -43,6 +43,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
+    // System groups can only have their color changed
+    if (category.isSystemGroup) {
+      const body = await request.json()
+      if (body.color) {
+        const updated = await prisma.transactionCategory.update({
+          where: { id: categoryId },
+          data: { color: body.color },
+          include: { _count: { select: { transactions: true } } },
+        })
+        return NextResponse.json({ success: true, data: updated })
+      }
+      return NextResponse.json(
+        { success: false, error: "System groups cannot be renamed or restructured" },
+        { status: 400 }
+      )
+    }
+
     const body = await request.json()
     const parsed = updateCategorySchema.safeParse(body)
 
@@ -122,6 +139,13 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         { success: false, error: "Category not found" },
         { status: 404 }
+      )
+    }
+
+    if (category.isSystemGroup) {
+      return NextResponse.json(
+        { success: false, error: "System groups cannot be deleted" },
+        { status: 400 }
       )
     }
 

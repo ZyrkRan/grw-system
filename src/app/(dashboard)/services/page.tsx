@@ -1,10 +1,12 @@
 "use client"
 
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { ServiceLogTable } from "@/components/services/service-log-table"
-import { ServiceTypes } from "@/app/(dashboard)/services/service-types"
+
+const ServiceLogTable = dynamic(() => import("@/components/services/service-log-table").then((m) => m.ServiceLogTable))
+const ServiceTypes = dynamic(() => import("@/app/(dashboard)/services/service-types").then((m) => m.ServiceTypes))
 
 type Tab = "log" | "types"
 

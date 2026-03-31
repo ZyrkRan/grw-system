@@ -10,10 +10,13 @@ import {
   MapPin,
   User,
   Lock,
-  Webhook,
   Save,
   Loader2,
   ChevronDown,
+  Brain,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,13 +30,27 @@ import {
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import {
+  getOllamaConfig,
+  setOllamaConfig,
+  checkOllamaHealth,
+  listModels,
+  type OllamaModel,
+} from "@/lib/ollama"
 
 interface CompanySettings {
   id: number
@@ -53,7 +70,7 @@ export default function SettingsPage() {
       <h1 className="text-3xl font-bold">Settings</h1>
       <CompanySettingsSection />
       <ProfileSection />
-      <N8nIntegrationSection />
+      <OllamaSection />
     </div>
   )
 }
@@ -486,60 +503,229 @@ function ProfileSection() {
   )
 }
 
-// ─── n8n Integration ────────────────────────────────────────────────────────
+// ─── Ollama AI Integration ───────────────────────────────────────────────────
 
-function N8nIntegrationSection() {
-  const webhookUrl = "/api/webhooks/n8n"
-  const supportedEvents = [
-    "New Customer Created",
-    "Service Completed",
-    "Invoice Created",
-  ]
+function OllamaSection() {
+  const [ollamaUrl, setOllamaUrl] = useState("")
+  const [selectedModel, setSelectedModel] = useState("")
+  const [models, setModels] = useState<OllamaModel[]>([])
+  const [isConnected, setIsConnected] = useState<boolean | null>(null)
+  const [isTesting, setIsTesting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [message, setMessage] = useState<{
+    type: "success" | "error"
+    text: string
+  } | null>(null)
+
+  // Load config from localStorage on mount
+  useEffect(() => {
+    const config = getOllamaConfig()
+    setOllamaUrl(config.url)
+    setSelectedModel(config.model)
+    // Auto-check connection on mount
+    testConnection(config.url)
+  }, [])
+
+  async function testConnection(url?: string) {
+    setIsTesting(true)
+    setMessage(null)
+    try {
+      // Temporarily set URL if provided so health check uses it
+      if (url) {
+        setOllamaConfig({ url })
+      }
+      const health = await checkOllamaHealth()
+      setIsConnected(health.connected)
+
+      if (health.connected) {
+        const availableModels = await listModels()
+        setModels(availableModels)
+        // If current model isn't in the list, select the first available
+        if (availableModels.length > 0) {
+          const currentModel = selectedModel || getOllamaConfig().model
+          const modelExists = availableModels.some(
+            (m) => m.name === currentModel
+          )
+          if (!modelExists) {
+            setSelectedModel(availableModels[0].name)
+          }
+        }
+      } else {
+        setModels([])
+        setMessage({
+          type: "error",
+          text: health.error || "Cannot connect to Ollama",
+        })
+      }
+    } catch {
+      setIsConnected(false)
+      setModels([])
+      setMessage({ type: "error", text: "Failed to connect to Ollama" })
+    } finally {
+      setIsTesting(false)
+    }
+  }
+
+  async function handleSave() {
+    setIsSaving(true)
+    setMessage(null)
+    try {
+      // Save to localStorage (client-side features)
+      setOllamaConfig({ url: ollamaUrl, model: selectedModel })
+      // Save to database (server-side AI features)
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ollamaUrl, ollamaModel: selectedModel }),
+      })
+      setMessage({ type: "success", text: "Ollama settings saved." })
+    } catch {
+      setMessage({ type: "error", text: "Failed to save settings." })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  function formatModelSize(bytes: number) {
+    const gb = bytes / (1024 * 1024 * 1024)
+    return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`
+  }
 
   return (
     <SettingsSection
-      icon={Webhook}
-      title="Automation (n8n)"
-      description="Configure your n8n instance to send webhooks to this endpoint."
+      icon={Brain}
+      title="AI Integration (Ollama)"
+      description="Connect to a local Ollama instance for AI-powered features like transaction categorization."
       defaultOpen={false}
     >
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label>Webhook Endpoint</Label>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 rounded-md border bg-muted px-3 py-2 text-sm font-mono">
-              {webhookUrl}
-            </code>
-          </div>
+        {/* Connection status */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">Status:</span>
+          {isConnected === null || isTesting ? (
+            <Badge variant="outline" className="gap-1.5">
+              <Loader2 className="size-3 animate-spin" />
+              Checking...
+            </Badge>
+          ) : isConnected ? (
+            <Badge variant="outline" className="gap-1.5 border-green-500 text-green-600">
+              <CheckCircle2 className="size-3" />
+              Connected
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="gap-1.5 border-red-500 text-red-600">
+              <XCircle className="size-3" />
+              Disconnected
+            </Badge>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => testConnection()}
+            disabled={isTesting}
+          >
+            <RefreshCw className={cn("size-4", isTesting && "animate-spin")} />
+            <span className="sr-only">Test connection</span>
+          </Button>
         </div>
 
         <Separator />
 
+        {/* Ollama URL */}
         <div className="space-y-2">
-          <Label>Supported Events</Label>
-          <div className="flex flex-wrap gap-2">
-            {supportedEvents.map((event) => (
-              <Badge key={event} variant="secondary">
-                {event}
-              </Badge>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950">
-          <p className="text-sm text-amber-800 dark:text-amber-300">
-            <strong>Webhook Authentication:</strong> Set the{" "}
-            <code className="font-mono text-xs bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">
-              N8N_WEBHOOK_SECRET
-            </code>{" "}
-            environment variable for incoming webhook authentication. Include
-            this secret in the <code className="font-mono text-xs">Authorization</code> header
-            of your n8n webhook requests.
+          <Label htmlFor="ollamaUrl">Ollama URL</Label>
+          <Input
+            id="ollamaUrl"
+            value={ollamaUrl}
+            onChange={(e) => setOllamaUrl(e.target.value)}
+            placeholder="http://localhost:11434"
+          />
+          <p className="text-xs text-muted-foreground">
+            The URL of your local Ollama instance. Default is http://localhost:11434
           </p>
+        </div>
+
+        {/* Model selection */}
+        <div className="space-y-2">
+          <Label htmlFor="ollamaModel">Model</Label>
+          {models.length > 0 ? (
+            <Select value={selectedModel} onValueChange={setSelectedModel}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a model" />
+              </SelectTrigger>
+              <SelectContent>
+                {models.map((m) => (
+                  <SelectItem key={m.name} value={m.name}>
+                    <span className="flex items-center gap-2">
+                      {m.name}
+                      <span className="text-xs text-muted-foreground">
+                        ({formatModelSize(m.size)})
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="ollamaModel"
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              placeholder="mistral"
+            />
+          )}
+          <p className="text-xs text-muted-foreground">
+            {models.length > 0
+              ? `${models.length} model${models.length === 1 ? "" : "s"} available on your Ollama instance.`
+              : "Connect to Ollama to see available models, or type a model name manually."}
+          </p>
+        </div>
+
+        {/* Info box */}
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-950">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
+            AI features run entirely on your local machine via Ollama. Your data never
+            leaves your network. Make sure Ollama is running before using AI features.
+          </p>
+        </div>
+
+        {message && (
+          <div
+            className={`rounded-md px-3 py-2 text-sm ${
+              message.type === "success"
+                ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400"
+                : "bg-destructive/10 text-destructive"
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 size-4" />
+            )}
+            Save Settings
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => testConnection(ollamaUrl)}
+            disabled={isTesting}
+          >
+            {isTesting ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 size-4" />
+            )}
+            Test Connection
+          </Button>
         </div>
       </div>
     </SettingsSection>
   )
 }
+

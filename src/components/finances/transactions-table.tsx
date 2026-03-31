@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useMemo } from "react"
 import {
   Plus,
   MoreHorizontal,
@@ -11,6 +11,8 @@ import {
   Tags,
   Paperclip,
   Filter,
+  Brain,
+  CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -35,51 +37,27 @@ import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Progress } from "@/components/ui/progress"
 import { TransactionDialog } from "@/components/finances/transaction-dialog"
 import type { TimeframeValue } from "@/components/finances/timeframe-selector"
-
-interface AccountRef {
-  id: number
-  name: string
-}
-
-interface CategoryRef {
-  id: number
-  name: string
-  color: string
-}
-
-interface ServiceLogRef {
-  id: number
-  serviceName: string
-}
-
-interface Transaction {
-  id: number
-  date: string
-  description: string
-  amount: number | string
-  type: string
-  notes: string | null
-  merchantName: string | null
-  isPending: boolean
-  plaidTransactionId?: string | null
-  account: AccountRef
-  category: CategoryRef | null
-  serviceLog: ServiceLogRef | null
-  _count?: { attachments: number }
-}
-
-interface PaginationInfo {
-  page: number
-  pageSize: number
-  total: number
-  totalPages: number
-}
+import {
+  useTransactions,
+  type Transaction,
+  type CategoryRef,
+} from "@/hooks/use-transactions"
+import { useAiCategorize, type CategorizationResult } from "@/hooks/use-ai-categorize"
 
 function formatCurrency(value: number | string | null | undefined): string {
   if (value === null || value === undefined) return "$0.00"
@@ -101,94 +79,106 @@ interface TransactionsTableProps {
   accountId?: string
   timeframe?: TimeframeValue
   refreshKey?: number
+  categoryGroupFilter?: "all" | "business" | "personal"
 }
 
-export function TransactionsTable({ accountId, timeframe, refreshKey }: TransactionsTableProps) {
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [pagination, setPagination] = useState<PaginationInfo | null>(null)
-  const [categories, setCategories] = useState<CategoryRef[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+export function TransactionsTable({ accountId, timeframe, refreshKey, categoryGroupFilter = "all" }: TransactionsTableProps) {
+  // Use custom hooks for all data and logic
+  const {
+    transactions,
+    pagination,
+    isLoading,
+    categories,
+    categoryFilter,
+    setCategoryFilter,
+    filteredCategories,
+    allGroupedCategories,
+    filteredGroupedCategories,
+    fetchTransactions,
+    handleCategoryAssign,
+    handleBulkCategoryAssign,
+    handleDelete,
+    handleBulkDelete,
+    handleDeleteConfirm,
+    deleteTarget,
+    bulkDeleteTargets,
+    setDeleteTarget,
+    setBulkDeleteTargets,
+    isDeleting,
+    deleteError,
+    setDeleteError,
+    bulkClearRef,
+    assigningTxnId,
+    isBulkAssigning,
+  } = useTransactions({
+    accountId,
+    timeframe,
+    refreshKey,
+    categoryGroupFilter,
+  })
+
+  const {
+    ollamaConnected,
+    isAiCategorizing,
+    aiProgress,
+    aiResults,
+    aiReviewOpen,
+    setAiReviewOpen,
+    setAiResults,
+    handleAiCategorize,
+    handleAiApply,
+  } = useAiCategorize({
+    categories: filteredCategories,
+    transactions,
+    fetchTransactions,
+  })
 
   // Dialogs
   const [formDialogOpen, setFormDialogOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] = useState<
-    Transaction | undefined
-  >(undefined)
-  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null)
-  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Transaction[]>([])
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState("")
-  const bulkClearRef = useRef<(() => void) | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | undefined>(undefined)
 
-  // Category filter: "all", "uncategorized", or a category ID string
-  const [categoryFilter, setCategoryFilter] = useState("all")
 
-  // Quick category assign
-  const [assigningTxnId, setAssigningTxnId] = useState<number | null>(null)
-  const [isBulkAssigning, setIsBulkAssigning] = useState(false)
+  // Render grouped category dropdown items for ASSIGN actions (always shows all categories)
+  function renderCategoryDropdownItems(onSelect: (categoryId: number) => void) {
+    const grouped = allGroupedCategories
+    const items: React.ReactNode[] = []
 
-  // Fetch categories for assign dialog
-  useEffect(() => {
-    fetch("/api/finances/categories")
-      .then((r) => r.json())
-      .then((result) => {
-        if (result.success) {
-          const flat: CategoryRef[] = []
-          for (const cat of result.data) {
-            flat.push({ id: cat.id, name: cat.name, color: cat.color })
-            if (cat.children) {
-              for (const child of cat.children) {
-                flat.push({
-                  id: child.id,
-                  name: child.name,
-                  color: child.color,
-                })
-              }
-            }
-          }
-          setCategories(flat)
-        }
-      })
-      .catch((err) => console.error("Failed to load categories:", err))
-  }, [])
-
-  const fetchTransactions = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (accountId && accountId !== "all") {
-        params.set("accountId", accountId)
-      }
-      if (timeframe?.dateFrom) params.set("dateFrom", timeframe.dateFrom)
-      if (timeframe?.dateTo) params.set("dateTo", timeframe.dateTo)
-      if (categoryFilter === "uncategorized") {
-        params.set("uncategorized", "true")
-      } else if (categoryFilter !== "all") {
-        params.set("categoryId", categoryFilter)
-      }
-      // Use server-side pagination with a large page size so
-      // client-side DataTable pagination still works as before
-      params.set("pageSize", "250")
-      const url = `/api/finances/transactions?${params}`
-      const res = await fetch(url)
-      const result = await res.json()
-
-      if (result.success) {
-        setTransactions(result.data)
-        if (result.pagination) {
-          setPagination(result.pagination)
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch transactions:", error)
-    } finally {
-      setIsLoading(false)
+    // Ungrouped categories first
+    for (const c of grouped.ungrouped) {
+      items.push(
+        <DropdownMenuItem key={c.id} onClick={(e) => { e.stopPropagation(); onSelect(c.id) }}>
+          <span className="mr-2 inline-block size-3 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+          {c.name}
+        </DropdownMenuItem>
+      )
     }
-  }, [accountId, timeframe, refreshKey, categoryFilter])
 
-  useEffect(() => {
-    fetchTransactions()
-  }, [fetchTransactions])
+    // Grouped categories with headers
+    for (const group of grouped.groups) {
+      if (items.length > 0 || grouped.ungrouped.length > 0) {
+        items.push(<DropdownMenuSeparator key={`sep-${group.slug}`} />)
+      }
+      // Only show group header when showing multiple groups
+      if (grouped.groups.length > 1) {
+        items.push(
+          <DropdownMenuLabel key={`label-${group.slug}`} className="text-xs text-muted-foreground font-normal uppercase tracking-wide">
+            {group.label}
+          </DropdownMenuLabel>
+        )
+      }
+      for (const c of group.items) {
+        items.push(
+          <DropdownMenuItem key={c.id} onClick={(e) => { e.stopPropagation(); onSelect(c.id) }}>
+            <span className="mr-2 inline-block size-3 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+            {c.name}
+          </DropdownMenuItem>
+        )
+      }
+    }
+
+    return items
+  }
+
 
   function handleAddTransaction() {
     setEditingTransaction(undefined)
@@ -198,131 +188,6 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
   function handleEditTransaction(transaction: Transaction) {
     setEditingTransaction(transaction)
     setFormDialogOpen(true)
-  }
-
-  function handleDeleteClick(transaction: Transaction) {
-    setDeleteTarget(transaction)
-    setDeleteError("")
-  }
-
-  async function handleDeleteConfirm() {
-    const targets = bulkDeleteTargets.length > 0 ? bulkDeleteTargets : deleteTarget ? [deleteTarget] : []
-    if (targets.length === 0) return
-    setIsDeleting(true)
-    setDeleteError("")
-
-    try {
-      if (targets.length === 1) {
-        // Single delete uses the existing endpoint
-        const res = await fetch(`/api/finances/transactions/${targets[0].id}`, { method: "DELETE" })
-        const result = await res.json()
-        if (!result.success) {
-          setDeleteError(result.error || "Failed to delete transaction.")
-          return
-        }
-      } else {
-        // Bulk delete uses the batch endpoint
-        const res = await fetch("/api/finances/transactions/batch", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: targets.map((t) => t.id) }),
-        })
-        const result = await res.json()
-        if (!result.success) {
-          setDeleteError(result.error || "Failed to delete transactions.")
-          return
-        }
-      }
-
-      setDeleteTarget(null)
-      setBulkDeleteTargets([])
-      bulkClearRef.current?.()
-      bulkClearRef.current = null
-      fetchTransactions()
-    } catch {
-      setDeleteError("Failed to delete. Please try again.")
-    } finally {
-      setIsDeleting(false)
-    }
-  }
-
-  function handleBulkDelete(selected: Transaction[], clearSelection: () => void) {
-    setBulkDeleteTargets(selected)
-    bulkClearRef.current = clearSelection
-    setDeleteError("")
-  }
-
-  async function handleCategoryAssign(transactionId: number, categoryId: number | null) {
-    setAssigningTxnId(transactionId)
-    try {
-      const res = await fetch(`/api/finances/transactions/${transactionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoryId }),
-      })
-      const result = await res.json()
-      if (result.success) {
-        // Update the transaction in local state instead of refetching all
-        setTransactions((prev) =>
-          prev.map((txn) =>
-            txn.id === transactionId
-              ? {
-                  ...txn,
-                  category: categoryId
-                    ? categories.find((c) => c.id === categoryId) || null
-                    : null,
-                }
-              : txn
-          )
-        )
-      }
-    } catch {
-      console.error("Failed to assign category")
-    } finally {
-      setAssigningTxnId(null)
-    }
-  }
-
-  async function handleBulkCategoryAssign(
-    selected: Transaction[],
-    categoryId: number | null,
-    clearSelection: () => void
-  ) {
-    setIsBulkAssigning(true)
-    try {
-      // Use batch endpoint instead of N individual requests
-      const res = await fetch("/api/finances/transactions/batch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ids: selected.map((t) => t.id),
-          categoryId,
-        }),
-      })
-      const result = await res.json()
-
-      if (result.success) {
-        // Update transactions in local state
-        const selectedIds = new Set(selected.map((t) => t.id))
-        setTransactions((prev) =>
-          prev.map((txn) =>
-            selectedIds.has(txn.id)
-              ? {
-                  ...txn,
-                  category: categoryId
-                    ? categories.find((c) => c.id === categoryId) || null
-                    : null,
-                }
-              : txn
-          )
-        )
-        clearSelection()
-      }
-    } catch {
-      console.error("Failed to bulk assign category")
-    } finally {
-      setIsBulkAssigning(false)
-    }
   }
 
   function handleFormSuccess() {
@@ -409,7 +274,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
               </button>
             )}
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+          <DropdownMenuContent align="start" className="max-h-[70vh] w-52 overflow-y-auto">
             <DropdownMenuLabel>Assign Category</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -421,21 +286,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
               <X className="mr-2 size-3.5 text-muted-foreground" />
               <span className="text-muted-foreground">Uncategorized</span>
             </DropdownMenuItem>
-            {categories.map((c) => (
-              <DropdownMenuItem
-                key={c.id}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleCategoryAssign(row.id, c.id)
-                }}
-              >
-                <span
-                  className="mr-2 inline-block size-3 shrink-0 rounded-full"
-                  style={{ backgroundColor: c.color }}
-                />
-                {c.name}
-              </DropdownMenuItem>
-            ))}
+            {renderCategoryDropdownItems((catId) => handleCategoryAssign(row.id, catId))}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -493,7 +344,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
             </DropdownMenuItem>
             <DropdownMenuItem
               variant="destructive"
-              onClick={() => handleDeleteClick(txn)}
+              onClick={() => handleDelete(txn)}
             >
               <Trash2 className="mr-2 size-4" />
               Delete
@@ -511,10 +362,40 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
           Transactions
           {pagination && ` (${pagination.total})`}
         </h2>
-        <Button onClick={handleAddTransaction} className="shrink-0">
-          <Plus className="mr-2 size-4" />
-          Add Transaction
-        </Button>
+        <div className="flex items-center gap-2">
+          {ollamaConnected && uncategorizedCount > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleAiCategorize()}
+                    disabled={isAiCategorizing || !accountId || accountId === "all"}
+                    className="shrink-0"
+                  >
+                    {isAiCategorizing ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <Brain className="mr-2 size-4" />
+                    )}
+                    {isAiCategorizing
+                      ? `Categorizing ${aiProgress.completed}/${aiProgress.total}...`
+                      : `AI Categorize (${uncategorizedCount})`}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {!accountId || accountId === "all"
+                    ? "Select a specific account to use AI categorization"
+                    : `Use AI to categorize ${uncategorizedCount} uncategorized transaction${uncategorizedCount !== 1 ? "s" : ""}`}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button onClick={handleAddTransaction} className="shrink-0">
+            <Plus className="mr-2 size-4" />
+            Add Transaction
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -543,16 +424,28 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 <SelectItem value="uncategorized">Uncategorized</SelectItem>
-                {categories.map((c) => (
+                {filteredGroupedCategories.ungrouped.map((c) => (
                   <SelectItem key={c.id} value={String(c.id)}>
                     <span className="flex items-center gap-2">
-                      <span
-                        className="inline-block size-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: c.color }}
-                      />
+                      <span className="inline-block size-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
                       {c.name}
                     </span>
                   </SelectItem>
+                ))}
+                {filteredGroupedCategories.groups.map((group) => (
+                  <SelectGroup key={group.slug}>
+                    {filteredGroupedCategories.groups.length > 1 && (
+                      <SelectLabel className="text-xs text-muted-foreground uppercase tracking-wide">{group.label}</SelectLabel>
+                    )}
+                    {group.items.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        <span className="flex items-center gap-2">
+                          <span className="inline-block size-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+                          {c.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 ))}
               </SelectContent>
             </Select>
@@ -602,7 +495,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
-                      onClick={() => handleDeleteClick(txn)}
+                      onClick={() => handleDelete(txn)}
                     >
                       <Trash2 className="mr-2 size-4" />
                       Delete
@@ -648,7 +541,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
                       </button>
                     )}
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                  <DropdownMenuContent align="start" className="max-h-[70vh] w-52 overflow-y-auto">
                     <DropdownMenuLabel>Assign Category</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -660,21 +553,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
                       <X className="mr-2 size-3.5 text-muted-foreground" />
                       <span className="text-muted-foreground">Uncategorized</span>
                     </DropdownMenuItem>
-                    {categories.map((c) => (
-                      <DropdownMenuItem
-                        key={c.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleCategoryAssign(txn.id, c.id)
-                        }}
-                      >
-                        <span
-                          className="mr-2 inline-block size-3 shrink-0 rounded-full"
-                          style={{ backgroundColor: c.color }}
-                        />
-                        {c.name}
-                      </DropdownMenuItem>
-                    ))}
+                    {renderCategoryDropdownItems((catId) => handleCategoryAssign(txn.id, catId))}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <span
@@ -706,7 +585,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
                     Set Category ({selected.length})
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                <DropdownMenuContent align="start" className="max-h-[70vh] w-52 overflow-y-auto">
                   <DropdownMenuLabel>Assign Category</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -715,18 +594,7 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
                     <X className="mr-2 size-3.5 text-muted-foreground" />
                     <span className="text-muted-foreground">Uncategorized</span>
                   </DropdownMenuItem>
-                  {categories.map((c) => (
-                    <DropdownMenuItem
-                      key={c.id}
-                      onClick={() => handleBulkCategoryAssign(selected, c.id, clearSelection)}
-                    >
-                      <span
-                        className="mr-2 inline-block size-3 shrink-0 rounded-full"
-                        style={{ backgroundColor: c.color }}
-                      />
-                      {c.name}
-                    </DropdownMenuItem>
-                  ))}
+                  {renderCategoryDropdownItems((catId) => handleBulkCategoryAssign(selected, catId, clearSelection))}
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button
@@ -808,6 +676,126 @@ export function TransactionsTable({ accountId, timeframe, refreshKey }: Transact
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Categorization Progress */}
+      {isAiCategorizing && (
+        <div className="fixed bottom-6 right-6 z-50 w-80 rounded-lg border bg-background p-4 shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Brain className="size-4 text-primary" />
+            <span className="text-sm font-medium">AI Categorizing...</span>
+          </div>
+          <Progress
+            value={aiProgress.total > 0 ? (aiProgress.completed / aiProgress.total) * 100 : 0}
+            className="h-2"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            {aiProgress.completed} of {aiProgress.total} transactions
+          </p>
+        </div>
+      )}
+
+      {/* AI Results Review Dialog */}
+      <Dialog open={aiReviewOpen} onOpenChange={(open) => {
+        if (!open) {
+          setAiReviewOpen(false)
+          setAiResults(null)
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Brain className="size-5" />
+              AI Categorization Results
+            </DialogTitle>
+            <DialogDescription>
+              {aiResults && aiResults.length > 0
+                ? `Review ${aiResults.length} suggested categorization${aiResults.length !== 1 ? "s" : ""} before applying.`
+                : "No suitable categories found for the uncategorized transactions."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {aiResults && aiResults.length > 0 && (
+            <div className="flex-1 overflow-y-auto space-y-2 py-2">
+              {aiResults.map((result) => {
+                const txn = transactions.find((t) => t.id === result.transactionId)
+                const cat = categories.find((c) => c.id === result.categoryId)
+                if (!txn) return null
+
+                return (
+                  <div
+                    key={result.transactionId}
+                    className="flex items-center gap-3 rounded-md border p-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {txn.description}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {txn.merchantName && `${txn.merchantName} · `}
+                        {formatCurrency(txn.amount)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {cat && (
+                        <Badge variant="outline" className="gap-1.5">
+                          <span
+                            className="inline-block size-2.5 rounded-full"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          {cat.name}
+                        </Badge>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className={
+                          result.confidence >= 0.7
+                            ? "border-green-500 text-green-600"
+                            : result.confidence >= 0.4
+                              ? "border-amber-500 text-amber-600"
+                              : "border-red-500 text-red-600"
+                        }
+                      >
+                        {Math.round(result.confidence * 100)}%
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        onClick={() =>
+                          setAiResults((prev) =>
+                            prev ? prev.filter((r) => r.transactionId !== result.transactionId) : null
+                          )
+                        }
+                      >
+                        <X className="size-3.5" />
+                        <span className="sr-only">Remove suggestion</span>
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAiReviewOpen(false)
+                setAiResults(null)
+              }}
+            >
+              Cancel
+            </Button>
+            {aiResults && aiResults.length > 0 && (
+              <Button onClick={() => handleAiApply(aiResults)}>
+                <CheckCircle2 className="mr-2 size-4" />
+                Apply {aiResults.length} Suggestion{aiResults.length !== 1 ? "s" : ""}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

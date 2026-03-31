@@ -119,10 +119,12 @@ function BalanceSkeleton() {
 export function BalanceChart({
   accountId,
   timeframe,
+  categoryGroup = "all",
   compact = false,
 }: {
   accountId?: string
   timeframe: TimeframeValue
+  categoryGroup?: "all" | "business" | "personal"
   compact?: boolean
 }) {
   const [data, setData] = useState<BalanceData | null>(null)
@@ -226,6 +228,7 @@ export function BalanceChart({
           const params = new URLSearchParams({ granularity, accountId: String(accId) })
           if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
           if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
+          if (categoryGroup && categoryGroup !== "all") params.set("categoryGroup", categoryGroup)
           const res = await fetch(`/api/finances/analytics/balance?${params}`)
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           const result = await res.json()
@@ -260,7 +263,7 @@ export function BalanceChart({
     } finally {
       setMultiAccountLoading(false)
     }
-  }, [selectedAccountIds, granularity, timeframe, accounts, mergeBalancePoints])
+  }, [selectedAccountIds, granularity, timeframe, accounts, mergeBalancePoints, categoryGroup])
 
   useEffect(() => {
     if (!compact && selectedAccountIds.length > 0) {
@@ -278,6 +281,9 @@ export function BalanceChart({
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
+      if (categoryGroup && categoryGroup !== "all") {
+        params.set("categoryGroup", categoryGroup)
+      }
       const res = await fetch(`/api/finances/analytics/balance?${params}`)
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`)
@@ -294,7 +300,7 @@ export function BalanceChart({
     } finally {
       setLoading(false)
     }
-  }, [granularity, timeframe, accountId])
+  }, [granularity, timeframe, accountId, categoryGroup])
 
   useEffect(() => {
     // Only fetch single-account data when NOT in multi-account mode

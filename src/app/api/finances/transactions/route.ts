@@ -9,6 +9,7 @@ import {
   formatZodError,
 } from "@/lib/validations/finances"
 import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
+import { resolveCategoryGroupIds } from "@/lib/category-group-filter"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -33,6 +34,9 @@ export async function GET(request: NextRequest) {
     page, pageSize,
   } = parsed.data
 
+  // Extra param not in zod schema: categoryGroup filter (business/personal)
+  const categoryGroup = request.nextUrl.searchParams.get("categoryGroup")
+
   try {
     // Parse dates with proper time boundaries to avoid timezone issues
     let dateFilter = {}
@@ -51,10 +55,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // If filtering by category group (business/personal), find all category IDs in that group
+    const categoryGroupIds = await resolveCategoryGroupIds(userId, categoryGroup)
+
     const where: Prisma.BankTransactionWhereInput = {
       userId,
       ...(accountId && { accountId }),
       ...(categoryId && { categoryId }),
+      ...(categoryGroupIds && { categoryId: { in: categoryGroupIds } }),
       ...(type && { type }),
       ...dateFilter,
       ...(search && {

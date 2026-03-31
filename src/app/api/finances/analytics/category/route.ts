@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { parseAnalyticsParams } from "@/lib/analytics-utils"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -9,61 +10,32 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = session.user.id
-  const searchParams = request.nextUrl.searchParams
-
-  // Parse account ID
-  const accountIdParam = searchParams.get("accountId")
-  const accountId = accountIdParam && accountIdParam !== "all" ? parseInt(accountIdParam, 10) : null
-  if (accountId !== null && isNaN(accountId)) {
-    return NextResponse.json({ success: false, error: "Invalid account ID" }, { status: 400 })
-  }
-
-  // Check if using dateFrom/dateTo or month/year params
-  const dateFromParam = searchParams.get("dateFrom")
-  const dateToParam = searchParams.get("dateTo")
 
   let selectedMonthStart: Date
   let selectedMonthEnd: Date
   let trendStart: Date
   let months: number
+  let baseWhere: any
 
-  if (dateFromParam && dateToParam) {
-    // Parse date strings in local timezone to avoid UTC offset issues
-    const [fromYear, fromMonth, fromDay] = dateFromParam.split("-").map(Number)
-    const [toYear, toMonth, toDay] = dateToParam.split("-").map(Number)
-    selectedMonthStart = new Date(fromYear, fromMonth - 1, fromDay, 0, 0, 0, 0)
-    selectedMonthEnd = new Date(toYear, toMonth - 1, toDay, 23, 59, 59, 999)
-
-    // For trend data, use the same range
-    trendStart = new Date(selectedMonthStart)
-
-    // Calculate approximate months for bucketing (used for trend chart initialization)
-    const durationMs = selectedMonthEnd.getTime() - selectedMonthStart.getTime()
-    const durationDays = durationMs / (1000 * 60 * 60 * 24)
-    months = Math.ceil(durationDays / 30) // Approximate months
-    if (months < 1) months = 1
-  } else {
-    // All Time: find earliest transaction date
-    const earliest = await prisma.bankTransaction.findFirst({
-      where: { userId },
-      orderBy: { date: "asc" },
-      select: { date: true },
-    })
-    selectedMonthStart = earliest ? new Date(earliest.date) : new Date()
-    selectedMonthStart.setHours(0, 0, 0, 0)
-    selectedMonthEnd = new Date()
-    selectedMonthEnd.setHours(23, 59, 59, 999)
+  try {
+    const params = await parseAnalyticsParams(request, userId)
+    selectedMonthStart = params.startDate
+    selectedMonthEnd = params.endDate
     trendStart = new Date(selectedMonthStart)
 
     const durationMs = selectedMonthEnd.getTime() - selectedMonthStart.getTime()
     const durationDays = durationMs / (1000 * 60 * 60 * 24)
     months = Math.ceil(durationDays / 30)
     if (months < 1) months = 1
-  }
 
-  const baseWhere = {
-    userId,
-    ...(accountId ? { accountId } : {}),
+    baseWhere = {
+      userId,
+      ...(params.accountId ? { accountId: params.accountId } : {}),
+      ...(params.categoryGroupIds ? { categoryId: { in: params.categoryGroupIds } } : {}),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid parameters"
+    return NextResponse.json({ success: false, error: message }, { status: 400 })
   }
 
   try {
