@@ -6,8 +6,12 @@ import {
   ArrowRight,
   Trash2,
   Tag,
+  Search,
+  ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -73,6 +77,29 @@ export function CategoriesManager() {
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<Category | CategoryChild | null>(null)
   const [isDeletingCategory, setIsDeletingCategory] = useState(false)
   const [deleteCategoryError, setDeleteCategoryError] = useState("")
+
+  // Rule search
+  const [ruleSearch, setRuleSearch] = useState("")
+
+  // Collapsible sections with localStorage persistence
+  const [categoriesOpen, setCategoriesOpen] = useState(() => {
+    if (typeof window === "undefined") return true
+    return localStorage.getItem("categories-panel-open") !== "false"
+  })
+  const [rulesOpen, setRulesOpen] = useState(() => {
+    if (typeof window === "undefined") return true
+    return localStorage.getItem("rules-panel-open") !== "false"
+  })
+
+  function handleCategoriesOpenChange(open: boolean) {
+    setCategoriesOpen(open)
+    localStorage.setItem("categories-panel-open", String(open))
+  }
+
+  function handleRulesOpenChange(open: boolean) {
+    setRulesOpen(open)
+    localStorage.setItem("rules-panel-open", String(open))
+  }
 
   // Rule dialogs
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
@@ -267,67 +294,76 @@ export function CategoriesManager() {
   return (
     <div className="space-y-8">
       {/* Categories Section */}
-      <div className="space-y-4">
+      <Collapsible open={categoriesOpen} onOpenChange={handleCategoriesOpenChange}>
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Categories</h2>
+          <CollapsibleTrigger className="flex items-center gap-2 cursor-pointer group">
+            <ChevronDown className={`size-4 text-muted-foreground transition-transform ${categoriesOpen ? "" : "-rotate-90"}`} />
+            <h2 className="text-xl font-semibold group-hover:text-foreground/80">Categories</h2>
+          </CollapsibleTrigger>
           <Button onClick={handleAddCategory}>
             <Plus className="mr-2 size-4" />
             Add Category
           </Button>
         </div>
 
-        {isLoadingCategories ? (
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-md border p-3">
-                <Skeleton className="size-4 rounded-full" />
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-16 ml-auto" />
-              </div>
-            ))}
-          </div>
-        ) : categoriesError ? (
-          <div className="flex flex-col items-center justify-center rounded-md border py-12">
-            <Tag className="size-12 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium">Failed to load categories</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Something went wrong. Please try again.
-            </p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={fetchCategories}>
-              Retry
-            </Button>
-          </div>
-        ) : categories.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-md border py-12">
-            <Tag className="size-12 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium">No categories yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Create categories to organize your transactions.
-            </p>
-          </div>
-        ) : (
-          <SortableCategoryList
-            categories={categories}
-            onReorder={handleReorder}
-            onEdit={handleEditCategory}
-            onDelete={handleDeleteCategoryClick}
-            onColorChange={handleColorChange}
-          />
-        )}
-      </div>
+        <CollapsibleContent className="mt-4">
+          {isLoadingCategories ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-md border p-3">
+                  <Skeleton className="size-4 rounded-full" />
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-16 ml-auto" />
+                </div>
+              ))}
+            </div>
+          ) : categoriesError ? (
+            <div className="flex flex-col items-center justify-center rounded-md border py-12">
+              <Tag className="size-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium">Failed to load categories</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Something went wrong. Please try again.
+              </p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={fetchCategories}>
+                Retry
+              </Button>
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-md border py-12">
+              <Tag className="size-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium">No categories yet</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Create categories to organize your transactions.
+              </p>
+            </div>
+          ) : (
+            <SortableCategoryList
+              categories={categories}
+              onReorder={handleReorder}
+              onEdit={handleEditCategory}
+              onDelete={handleDeleteCategoryClick}
+              onColorChange={handleColorChange}
+            />
+          )}
+        </CollapsibleContent>
+      </Collapsible>
 
       <Separator />
 
       {/* Categorization Rules Section */}
-      <div className="space-y-4">
+      <Collapsible open={rulesOpen} onOpenChange={handleRulesOpenChange}>
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Categorization Rules</h2>
+          <CollapsibleTrigger className="flex items-center gap-2 cursor-pointer group">
+            <ChevronDown className={`size-4 text-muted-foreground transition-transform ${rulesOpen ? "" : "-rotate-90"}`} />
+            <h2 className="text-xl font-semibold group-hover:text-foreground/80">Categorization Rules</h2>
+          </CollapsibleTrigger>
           <Button onClick={handleAddRule}>
             <Plus className="mr-2 size-4" />
             Add Rule
           </Button>
         </div>
 
+        <CollapsibleContent className="mt-4">
         {isLoadingRules ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -347,37 +383,57 @@ export function CategoriesManager() {
             </p>
           </div>
         ) : (
-          <div className="space-y-1">
-            {rules.map((rule) => (
-              <div
-                key={rule.id}
-                className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/50"
-              >
-                <code className="rounded bg-muted px-2 py-0.5 text-sm font-mono">
-                  {rule.pattern}
-                </code>
-                <ArrowRight className="size-4 text-muted-foreground shrink-0" />
-                <span className="flex items-center gap-2 text-sm">
-                  <span
-                    className="inline-block size-3 shrink-0 rounded-full"
-                    style={{ backgroundColor: rule.category.color }}
-                  />
-                  {rule.category.name}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="ml-auto size-7"
-                  onClick={() => handleDeleteRuleClick(rule)}
-                >
-                  <Trash2 className="size-3.5" />
-                  <span className="sr-only">Delete rule</span>
-                </Button>
+          <>
+            {rules.length > 5 && (
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search rules..."
+                  value={ruleSearch}
+                  onChange={(e) => setRuleSearch(e.target.value)}
+                  className="pl-8 h-9"
+                />
               </div>
-            ))}
-          </div>
+            )}
+            <div className="space-y-1">
+              {rules
+                .filter((rule) => {
+                  if (!ruleSearch) return true
+                  const q = ruleSearch.toLowerCase()
+                  return rule.pattern.toLowerCase().includes(q) || rule.category.name.toLowerCase().includes(q)
+                })
+                .map((rule) => (
+                  <div
+                    key={rule.id}
+                    className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/50"
+                  >
+                    <code className="rounded bg-muted px-2 py-0.5 text-sm font-mono">
+                      {rule.pattern}
+                    </code>
+                    <ArrowRight className="size-4 text-muted-foreground shrink-0" />
+                    <span className="flex items-center gap-2 text-sm">
+                      <span
+                        className="inline-block size-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: rule.category.color }}
+                      />
+                      {rule.category.name}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto size-7"
+                      onClick={() => handleDeleteRuleClick(rule)}
+                    >
+                      <Trash2 className="size-3.5" />
+                      <span className="sr-only">Delete rule</span>
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          </>
         )}
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Category Dialog */}
       <CategoryDialog

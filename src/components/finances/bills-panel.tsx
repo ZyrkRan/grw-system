@@ -87,7 +87,7 @@ function formatCurrency(value: number) {
 
 // ─── Main Panel ──────────────────────────────────────────────────────────────
 
-export function BillsPanel({ refreshKey }: { refreshKey?: number }) {
+export function BillsPanel({ refreshKey, accountId }: { refreshKey?: number; accountId?: string }) {
   const [bills, setBills] = useState<Bill[]>([])
   const [summary, setSummary] = useState<BillsSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -98,7 +98,9 @@ export function BillsPanel({ refreshKey }: { refreshKey?: number }) {
 
   const fetchBills = useCallback(async () => {
     try {
-      const res = await fetch("/api/finances/bills")
+      const params = new URLSearchParams()
+      if (accountId && accountId !== "all") params.set("accountId", accountId)
+      const res = await fetch(`/api/finances/bills${params.size > 0 ? `?${params}` : ""}`)
       const data = await res.json()
       if (data.success) {
         setBills(data.data.bills)
@@ -109,7 +111,7 @@ export function BillsPanel({ refreshKey }: { refreshKey?: number }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [accountId])
 
   useEffect(() => {
     fetchBills()
@@ -230,18 +232,22 @@ export function BillsPanel({ refreshKey }: { refreshKey?: number }) {
           {bills.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <CreditCard className="size-8 text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground">No bills yet</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={() => {
-                  setEditingBill(null)
-                  setDialogOpen(true)
-                }}
-              >
-                <Plus className="size-4 mr-1" /> Add your first bill
-              </Button>
+              <p className="text-sm text-muted-foreground">
+                {accountId && accountId !== "all" ? "No bills for this account" : "No bills yet"}
+              </p>
+              {(!accountId || accountId === "all") && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => {
+                    setEditingBill(null)
+                    setDialogOpen(true)
+                  }}
+                >
+                  <Plus className="size-4 mr-1" /> Add your first bill
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-0.5">

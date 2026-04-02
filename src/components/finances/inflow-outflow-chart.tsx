@@ -23,6 +23,16 @@ import {
 } from "@/components/ui/chart"
 import type { TimeframeValue } from "./timeframe-selector"
 
+interface FlowChartData {
+  points: Array<{
+    date: string
+    label: string
+    inflow: number
+    outflow: number
+  }>
+  granularity: "daily" | "weekly" | "monthly"
+}
+
 interface InflowOutflowPoint {
   date: string
   label: string
@@ -178,13 +188,17 @@ function InflowOutflowSkeleton() {
 }
 
 export function InflowOutflowChart({
+  data: externalData,
+  isLoading: externalLoading,
   accountId,
   timeframe,
   categoryGroup = "all",
   compact = false,
 }: {
+  data?: FlowChartData
+  isLoading?: boolean
   accountId?: string
-  timeframe: TimeframeValue
+  timeframe?: TimeframeValue
   categoryGroup?: "all" | "business" | "personal"
   compact?: boolean
 }) {
@@ -192,7 +206,22 @@ export function InflowOutflowChart({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
+  // If external data is provided, use it directly
+  const effectiveData = externalData ? {
+    points: externalData.points,
+    summary: {
+      totalInflow: externalData.points.reduce((sum: number, p: InflowOutflowPoint) => sum + p.inflow, 0),
+      totalOutflow: externalData.points.reduce((sum: number, p: InflowOutflowPoint) => sum + p.outflow, 0),
+      netChange: externalData.points.reduce((sum: number, p: InflowOutflowPoint) => sum + (p.inflow - p.outflow), 0),
+    },
+    granularity: externalData.granularity,
+  } as InflowOutflowData : null
+
+  const effectiveLoading = externalData !== undefined ? (externalLoading ?? false) : loading
+
   const fetchData = useCallback(async () => {
+    if (!timeframe || !accountId) return
+
     setLoading(true)
     setError(false)
     try {
@@ -238,36 +267,42 @@ export function InflowOutflowChart({
   }, [timeframe, accountId, categoryGroup])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    // Only fetch if external data is not provided
+    if (externalData === undefined && timeframe && accountId) {
+      fetchData()
+    }
+  }, [fetchData, externalData, timeframe, accountId])
+
+  const displayData = effectiveData || data
+  const displayLoading = effectiveLoading
 
   const netIcon =
-    data && data.summary.netChange > 0 ? (
+    displayData && displayData.summary.netChange > 0 ? (
       <TrendingUp className="h-4 w-4 text-green-500" />
-    ) : data && data.summary.netChange < 0 ? (
+    ) : displayData && displayData.summary.netChange < 0 ? (
       <TrendingDown className="h-4 w-4 text-red-500" />
     ) : (
       <Minus className="h-4 w-4 text-muted-foreground" />
     )
 
   const netColor =
-    data && data.summary.netChange > 0
+    displayData && displayData.summary.netChange > 0
       ? "text-green-600"
-      : data && data.summary.netChange < 0
+      : displayData && displayData.summary.netChange < 0
         ? "text-red-600"
         : ""
 
   const [compactOpen, setCompactOpen] = useState(false)
 
-  const tickMeta = data && data.granularity !== "monthly"
-    ? computeTickMeta(data.points)
+  const tickMeta = displayData && displayData.granularity !== "monthly"
+    ? computeTickMeta(displayData.points)
     : null
 
   if (compact) {
     return (
       <Card>
         <CardContent className="pt-6">
-          {loading ? (
+          {displayLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-4 w-32" />
               <div className="grid grid-cols-2 gap-2">
@@ -279,11 +314,13 @@ export function InflowOutflowChart({
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <p className="text-sm font-medium">Failed to load</p>
-              <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
-                Retry
-              </Button>
+              {!externalData && (
+                <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
+                  Retry
+                </Button>
+              )}
             </div>
-          ) : !data || data.points.length === 0 ? (
+          ) : !displayData || displayData.points.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Minus className="size-8 text-muted-foreground mb-2" />
               <p className="text-sm text-muted-foreground">No data</p>
@@ -306,14 +343,14 @@ export function InflowOutflowChart({
                     <ArrowUpRight className="size-3.5 text-green-600" />
                     <span className="text-xs text-muted-foreground">Inflow</span>
                   </div>
-                  <p className="text-sm font-semibold text-green-600">{formatCurrency(data.summary.totalInflow)}</p>
+                  <p className="text-sm font-semibold text-green-600">{formatCurrency(displayData.summary.totalInflow)}</p>
                 </div>
                 <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-2.5">
                   <div className="flex items-center gap-1 mb-0.5">
                     <ArrowDownRight className="size-3.5 text-red-600" />
                     <span className="text-xs text-muted-foreground">Outflow</span>
                   </div>
-                  <p className="text-sm font-semibold text-red-600">{formatCurrency(data.summary.totalOutflow)}</p>
+                  <p className="text-sm font-semibold text-red-600">{formatCurrency(displayData.summary.totalOutflow)}</p>
                 </div>
               </div>
 
@@ -321,8 +358,8 @@ export function InflowOutflowChart({
               <div className="flex items-center gap-1.5 text-xs">
                 <span className="text-muted-foreground">Net</span>
                 <span className={cn("font-semibold", netColor)}>
-                  {data.summary.netChange >= 0 ? "+" : ""}
-                  {formatCurrency(data.summary.netChange)}
+                  {displayData.summary.netChange >= 0 ? "+" : ""}
+                  {formatCurrency(displayData.summary.netChange)}
                 </span>
                 {netIcon}
               </div>
@@ -330,7 +367,7 @@ export function InflowOutflowChart({
               <div className={cn(compactOpen ? "block" : "hidden md:block")}>
                 <Separator className="mb-3" />
                 <ChartContainer config={chartConfig} className="h-[200px] w-full">
-                  <BarChart accessibilityLayer data={data.points}>
+                  <BarChart accessibilityLayer data={displayData.points}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis
                       dataKey="label"
@@ -374,7 +411,7 @@ export function InflowOutflowChart({
   // Full-size mode
   return (
     <div>
-      {loading ? (
+      {displayLoading ? (
         <InflowOutflowSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center rounded-md border py-12 text-center">
@@ -382,11 +419,13 @@ export function InflowOutflowChart({
           <p className="text-sm text-muted-foreground mt-1">
             Could not load inflow/outflow data.
           </p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>
-            Retry
-          </Button>
+          {!externalData && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>
+              Retry
+            </Button>
+          )}
         </div>
-      ) : !data || data.points.length === 0 ? (
+      ) : !displayData || displayData.points.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-md border py-12 text-center">
           <Minus className="size-12 text-muted-foreground mb-4" />
           <p className="text-lg font-medium">No transaction data</p>
@@ -401,7 +440,7 @@ export function InflowOutflowChart({
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total Inflow</p>
                 <p className="text-lg font-semibold mt-1 text-green-600">
-                  {formatCurrency(data.summary.totalInflow)}
+                  {formatCurrency(displayData.summary.totalInflow)}
                 </p>
               </CardContent>
             </Card>
@@ -409,7 +448,7 @@ export function InflowOutflowChart({
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Total Outflow</p>
                 <p className="text-lg font-semibold mt-1 text-red-600">
-                  {formatCurrency(data.summary.totalOutflow)}
+                  {formatCurrency(displayData.summary.totalOutflow)}
                 </p>
               </CardContent>
             </Card>
@@ -419,8 +458,8 @@ export function InflowOutflowChart({
                   Net Change {netIcon}
                 </p>
                 <p className={cn("text-lg font-semibold mt-1", netColor)}>
-                  {data.summary.netChange >= 0 ? "+" : ""}
-                  {formatCurrency(data.summary.netChange)}
+                  {displayData.summary.netChange >= 0 ? "+" : ""}
+                  {formatCurrency(displayData.summary.netChange)}
                 </p>
               </CardContent>
             </Card>
@@ -429,7 +468,7 @@ export function InflowOutflowChart({
           <Card>
             <CardContent className="pt-6">
               <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
-                <BarChart accessibilityLayer data={data.points}>
+                <BarChart accessibilityLayer data={displayData.points}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="label"

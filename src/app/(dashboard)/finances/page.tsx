@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
 import {
@@ -20,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { TimeframeSelector, getTimeframeValue, type TimeframeValue } from "@/components/finances/timeframe-selector"
 import { AccountSwitcher } from "@/components/finances/account-switcher"
 import { BillsPanel } from "@/components/finances/bills-panel"
@@ -114,6 +116,39 @@ function formatCurrency(value: number) {
 
 // ─── Summary Data ────────────────────────────────────────────────────────────
 
+interface FlowChartData {
+  points: Array<{
+    date: string
+    label: string
+    inflow: number
+    outflow: number
+  }>
+  granularity: "daily" | "weekly" | "monthly"
+}
+
+interface BalanceChartData {
+  points: Array<{
+    date: string
+    balance: number
+    label: string
+  }>
+  summary: {
+    startBalance: number
+    endBalance: number
+    netChange: number
+    highBalance: number
+    lowBalance: number
+  }
+}
+
+interface CategoryBreakdownItem {
+  id: number | null
+  name: string
+  color: string
+  total: number
+  count: number
+}
+
 interface SummaryData {
   stats: {
     totalInflow: number
@@ -128,11 +163,17 @@ interface SummaryData {
     paid: number
     expectedAmount: number
   }
+  flowChart: FlowChartData
+  balanceChart: BalanceChartData
+  categoryBreakdown: CategoryBreakdownItem[]
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function FinancesPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [selectedAccountId, setSelectedAccountId] = useState("all")
   const [timeframe, setTimeframe] = useState<TimeframeValue>(() => getTimeframeValue("month"))
   const [syncVersion, setSyncVersion] = useState(0)
@@ -141,34 +182,73 @@ export default function FinancesPage() {
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [showCategories, setShowCategories] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
 
   const handleSync = useCallback(() => {
     setSyncVersion((v) => v + 1)
   }, [])
 
-  // ─── Hydrate from localStorage ────────────────────────────────────
+  // ─── Initialize state from URL params with localStorage fallback ─────
   useEffect(() => {
-    try {
-      const storedTimeframe = localStorage.getItem(TIMEFRAME_STORAGE_KEY)
-      if (storedTimeframe) setTimeframe(JSON.parse(storedTimeframe))
-    } catch { /* keep default */ }
+    // URL params take priority, then localStorage, then defaults
 
-    const storedAccount = localStorage.getItem(ACCOUNT_STORAGE_KEY)
-    if (storedAccount) setSelectedAccountId(storedAccount)
-
-    const storedFilter = localStorage.getItem(CATEGORY_FILTER_STORAGE_KEY)
-    if (storedFilter && ["all", "business", "personal"].includes(storedFilter)) {
-      setCategoryFilter(storedFilter as CategoryFilter)
+    // Timeframe
+    const tfParam = searchParams.get("tf")
+    if (tfParam) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(tfParam))
+        setTimeframe(parsed)
+      } catch {
+        try {
+          const stored = localStorage.getItem(TIMEFRAME_STORAGE_KEY)
+          if (stored) setTimeframe(JSON.parse(stored))
+        } catch { /* use default */ }
+      }
+    } else {
+      try {
+        const stored = localStorage.getItem(TIMEFRAME_STORAGE_KEY)
+        if (stored) setTimeframe(JSON.parse(stored))
+      } catch { /* use default */ }
     }
 
-    const storedChart = localStorage.getItem(CHART_VIEW_STORAGE_KEY)
-    if (storedChart && ["flow", "categories", "balance"].includes(storedChart)) {
-      setChartView(storedChart as ChartView)
+    // Account
+    const accountParam = searchParams.get("account")
+    if (accountParam) {
+      setSelectedAccountId(accountParam)
+    } else {
+      const stored = localStorage.getItem(ACCOUNT_STORAGE_KEY)
+      if (stored) setSelectedAccountId(stored)
     }
-  }, [])
+
+    // Category filter
+    const groupParam = searchParams.get("group")
+    if (groupParam && ["all", "business", "personal"].includes(groupParam)) {
+      setCategoryFilter(groupParam as CategoryFilter)
+    } else {
+      const stored = localStorage.getItem(CATEGORY_FILTER_STORAGE_KEY)
+      if (stored && ["all", "business", "personal"].includes(stored)) {
+        setCategoryFilter(stored as CategoryFilter)
+      }
+    }
+
+    // Chart view
+    const chartParam = searchParams.get("chart")
+    if (chartParam && ["flow", "categories", "balance"].includes(chartParam)) {
+      setChartView(chartParam as ChartView)
+    } else {
+      const stored = localStorage.getItem(CHART_VIEW_STORAGE_KEY)
+      if (stored && ["flow", "categories", "balance"].includes(stored)) {
+        setChartView(stored as ChartView)
+      }
+    }
+
+    setIsHydrated(true)
+  }, [searchParams])
 
   // ─── Fetch consolidated summary ────────────────────────────────────
   useEffect(() => {
+    if (!isHydrated) return
+
     setSummaryLoading(true)
     const params = new URLSearchParams()
     if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
@@ -189,27 +269,55 @@ export default function FinancesPage() {
       })
       .catch(console.error)
       .finally(() => setSummaryLoading(false))
-  }, [timeframe, selectedAccountId, categoryFilter, syncVersion])
+  }, [timeframe, selectedAccountId, categoryFilter, syncVersion, isHydrated])
 
   // ─── Handlers ──────────────────────────────────────────────────────
+  const updateUrlParams = useCallback(
+    (updates: Partial<{ tf: string; account: string; group: string; chart: string }>) => {
+      const params = new URLSearchParams(searchParams)
+      if (updates.tf !== undefined) {
+        if (updates.tf) params.set("tf", updates.tf)
+        else params.delete("tf")
+      }
+      if (updates.account !== undefined) {
+        if (updates.account && updates.account !== "all") params.set("account", updates.account)
+        else params.delete("account")
+      }
+      if (updates.group !== undefined) {
+        if (updates.group && updates.group !== "all") params.set("group", updates.group)
+        else params.delete("group")
+      }
+      if (updates.chart !== undefined) {
+        if (updates.chart && updates.chart !== "flow") params.set("chart", updates.chart)
+        else params.delete("chart")
+      }
+      router.replace(`?${params.toString()}`)
+    },
+    [router, searchParams]
+  )
+
   const handleTimeframeChange = (newTimeframe: TimeframeValue) => {
     setTimeframe(newTimeframe)
     localStorage.setItem(TIMEFRAME_STORAGE_KEY, JSON.stringify(newTimeframe))
+    updateUrlParams({ tf: encodeURIComponent(JSON.stringify(newTimeframe)) })
   }
 
   const handleAccountChange = (accountId: string) => {
     setSelectedAccountId(accountId)
     localStorage.setItem(ACCOUNT_STORAGE_KEY, accountId)
+    updateUrlParams({ account: accountId })
   }
 
   const handleCategoryFilterChange = (filter: CategoryFilter) => {
     setCategoryFilter(filter)
     localStorage.setItem(CATEGORY_FILTER_STORAGE_KEY, filter)
+    updateUrlParams({ group: filter })
   }
 
   const handleChartViewChange = (view: ChartView) => {
     setChartView(view)
     localStorage.setItem(CHART_VIEW_STORAGE_KEY, view)
+    updateUrlParams({ chart: view })
   }
 
   const stats = summaryData?.stats
@@ -341,33 +449,27 @@ export default function FinancesPage() {
           {/* Active chart */}
           {chartView === "flow" && (
             <InflowOutflowChart
-              key={`io-${syncVersion}`}
-              accountId={selectedAccountId}
-              timeframe={timeframe}
-              categoryGroup={categoryFilter}
+              data={summaryData?.flowChart}
+              isLoading={summaryLoading}
             />
           )}
           {chartView === "categories" && (
             <CategoryAnalytics
-              key={`ca-${syncVersion}`}
-              accountId={selectedAccountId}
-              timeframe={timeframe}
-              categoryGroup={categoryFilter}
+              data={summaryData?.categoryBreakdown}
+              isLoading={summaryLoading}
             />
           )}
           {chartView === "balance" && (
             <BalanceChart
-              key={`bc-${syncVersion}`}
-              accountId={selectedAccountId}
-              timeframe={timeframe}
-              categoryGroup={categoryFilter}
+              data={summaryData?.balanceChart}
+              isLoading={summaryLoading}
             />
           )}
         </div>
 
         {/* Bills panel (1/3 width on large screens) */}
         <div>
-          <BillsPanel refreshKey={syncVersion} />
+          <BillsPanel refreshKey={syncVersion} accountId={selectedAccountId} />
         </div>
       </div>
 
@@ -379,20 +481,17 @@ export default function FinancesPage() {
         categoryGroupFilter={categoryFilter}
       />
 
-      {/* ─── Categories Manager (modal) ────────────────────────────── */}
-      {showCategories && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-start justify-center pt-[5vh] overflow-y-auto">
-          <div className="w-full max-w-2xl bg-background border rounded-xl shadow-lg p-6 mb-8 relative">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Manage Categories</h2>
-              <Button variant="ghost" size="sm" onClick={() => setShowCategories(false)}>
-                Close
-              </Button>
-            </div>
+      {/* ─── Categories Manager (Sheet modal) ──────────────────────── */}
+      <Sheet open={showCategories} onOpenChange={setShowCategories}>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Manage Categories</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6">
             <CategoriesManager />
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

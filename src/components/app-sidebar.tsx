@@ -15,6 +15,7 @@ import {
   ChevronsUpDown,
   ChevronLeft,
   Sparkles,
+  FileSpreadsheet,
 } from "lucide-react"
 
 import {
@@ -50,6 +51,7 @@ const mainNavItems = [
 const moneyNavItems = [
   { title: "Finances", url: "/finances", icon: DollarSign },
   { title: "AI Insights", url: "/ai", icon: Sparkles },
+  { title: "Tax Review '25", url: "/tax-review", icon: FileSpreadsheet },
 ]
 
 const bottomNavItems = [

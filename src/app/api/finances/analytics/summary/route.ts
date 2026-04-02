@@ -108,9 +108,9 @@ export async function GET(request: NextRequest) {
         select: { currentBalance: true },
       }),
 
-      // Bills summary for current month
+      // Bills summary for current month (filtered by account if selected)
       prisma.bill.findMany({
-        where: { userId, isActive: true },
+        where: { userId, isActive: true, ...(accountId ? { accountId } : {}) },
         include: {
           payments: {
             where: {

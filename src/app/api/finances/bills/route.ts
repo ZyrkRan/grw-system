@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const userId = session.user.id
   const searchParams = request.nextUrl.searchParams
   const activeOnly = searchParams.get("active") !== "false"
+  const accountIdParam = searchParams.get("accountId")
 
   // Determine current period start based on today
   const now = new Date()
@@ -23,6 +24,7 @@ export async function GET(request: NextRequest) {
       where: {
         userId,
         ...(activeOnly ? { isActive: true } : {}),
+        ...(accountIdParam && accountIdParam !== "all" ? { accountId: Number(accountIdParam) } : {}),
       },
       include: {
         category: { select: { id: true, name: true, color: true } },

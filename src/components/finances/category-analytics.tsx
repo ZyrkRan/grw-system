@@ -611,13 +611,17 @@ interface DialogTransaction {
 }
 
 export function CategoryAnalytics({
+  data: externalBreakdownData,
+  isLoading: externalLoading,
   accountId,
   timeframe,
   categoryGroup = "all",
   compact = false,
 }: {
+  data?: Array<{ id: number | null; name: string; color: string; total: number; count: number }>
+  isLoading?: boolean
   accountId?: string
-  timeframe: TimeframeValue
+  timeframe?: TimeframeValue
   categoryGroup?: "all" | "business" | "personal"
   compact?: boolean
 }) {
@@ -633,7 +637,42 @@ export function CategoryAnalytics({
   const [dialogTransactions, setDialogTransactions] = useState<DialogTransaction[]>([])
   const [dialogLoading, setDialogLoading] = useState(false)
 
+  // Convert external breakdown data to AnalyticsData format
+  const effectiveData = useMemo(() => {
+    if (!externalBreakdownData) return null
+    const outflowPieData: PieDataItem[] = externalBreakdownData.map((item) => ({
+      id: item.id,
+      name: item.name,
+      color: item.color,
+      value: item.total,
+      count: item.count,
+      parentId: null,
+      isGroup: false,
+    }))
+    const totalSpend = externalBreakdownData.reduce((sum, item) => sum + item.total, 0)
+    const totalCount = externalBreakdownData.reduce((sum, item) => sum + item.count, 0)
+    return {
+      inflowPieData: [],
+      outflowPieData,
+      trendData: [],
+      trendCategories: [],
+      trendColors: {},
+      summary: {
+        totalSpend,
+        totalCount,
+        averageTransaction: totalCount > 0 ? totalSpend / totalCount : 0,
+        uncategorizedCount: externalBreakdownData.some((item) => item.id === null) ? 1 : 0,
+        topCategory: externalBreakdownData[0]?.name || null,
+        topInflowCategory: null,
+      },
+    } as AnalyticsData
+  }, [externalBreakdownData])
+
+  const effectiveLoading = externalBreakdownData !== undefined ? (externalLoading ?? false) : loading
+
   const fetchData = useCallback(async () => {
+    if (!timeframe || !accountId) return
+
     setLoading(true)
     setError(false)
     try {
@@ -665,45 +704,50 @@ export function CategoryAnalytics({
   }, [timeframe, accountId, categoryGroup])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    // Only fetch if external data is not provided
+    if (externalBreakdownData === undefined && timeframe && accountId) {
+      fetchData()
+    }
+  }, [fetchData, externalBreakdownData, timeframe, accountId])
+
+  const displayData = effectiveData || data
 
   // Filter inflow data based on expanded state
   const filteredInflowData = useMemo(() => {
-    if (!data) return []
+    if (!displayData) return []
     if (expandedInflowCategory === null) {
       // Show only top-level categories (no parent)
-      return data.inflowPieData.filter((item) => item.parentId === null)
+      return displayData.inflowPieData.filter((item) => item.parentId === null)
     } else {
       // Show only children of the expanded category
-      return data.inflowPieData.filter((item) => item.parentId === expandedInflowCategory)
+      return displayData.inflowPieData.filter((item) => item.parentId === expandedInflowCategory)
     }
-  }, [data, expandedInflowCategory])
+  }, [displayData, expandedInflowCategory])
 
   // Filter outflow data based on expanded state
   const filteredOutflowData = useMemo(() => {
-    if (!data) return []
+    if (!displayData) return []
     if (expandedOutflowCategory === null) {
       // Show only top-level categories (no parent)
-      return data.outflowPieData.filter((item) => item.parentId === null)
+      return displayData.outflowPieData.filter((item) => item.parentId === null)
     } else {
       // Show only children of the expanded category
-      return data.outflowPieData.filter((item) => item.parentId === expandedOutflowCategory)
+      return displayData.outflowPieData.filter((item) => item.parentId === expandedOutflowCategory)
     }
-  }, [data, expandedOutflowCategory])
+  }, [displayData, expandedOutflowCategory])
 
   // Get expanded category name for breadcrumb
   const expandedInflowName = useMemo(() => {
-    if (!data || expandedInflowCategory === null) return null
-    const cat = data.inflowPieData.find((item) => item.id === expandedInflowCategory)
+    if (!displayData || expandedInflowCategory === null) return null
+    const cat = displayData.inflowPieData.find((item) => item.id === expandedInflowCategory)
     return cat?.name || null
-  }, [data, expandedInflowCategory])
+  }, [displayData, expandedInflowCategory])
 
   const expandedOutflowName = useMemo(() => {
-    if (!data || expandedOutflowCategory === null) return null
-    const cat = data.outflowPieData.find((item) => item.id === expandedOutflowCategory)
+    if (!displayData || expandedOutflowCategory === null) return null
+    const cat = displayData.outflowPieData.find((item) => item.id === expandedOutflowCategory)
     return cat?.name || null
-  }, [data, expandedOutflowCategory])
+  }, [displayData, expandedOutflowCategory])
 
   const handleInflowCategoryClick = useCallback((categoryId: number | null) => {
     setExpandedInflowCategory(categoryId)
@@ -716,8 +760,8 @@ export function CategoryAnalytics({
   const handleSliceSelect = useCallback(async (categoryId: number | null, categoryName: string) => {
     if (categoryId === null) return
     // Find the color from the pie data
-    const item = data?.inflowPieData.find((d) => d.id === categoryId)
-      || data?.outflowPieData.find((d) => d.id === categoryId)
+    const item = displayData?.inflowPieData.find((d) => d.id === categoryId)
+      || displayData?.outflowPieData.find((d) => d.id === categoryId)
     setDialogCategory({ id: categoryId, name: categoryName, color: item?.color || "#6b7280" })
     setDialogOpen(true)
     setDialogLoading(true)
@@ -726,8 +770,8 @@ export function CategoryAnalytics({
     try {
       const params = new URLSearchParams()
       params.set("categoryId", String(categoryId))
-      if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
-      if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
+      if (timeframe?.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+      if (timeframe?.dateTo) params.set("dateTo", timeframe.dateTo)
       if (accountId && accountId !== "all") params.set("accountId", accountId)
       params.set("pageSize", "50")
       const res = await fetch(`/api/finances/transactions?${params}`)
@@ -740,7 +784,7 @@ export function CategoryAnalytics({
     } finally {
       setDialogLoading(false)
     }
-  }, [data, timeframe, accountId])
+  }, [displayData, timeframe, accountId])
 
   const [compactOpen, setCompactOpen] = useState(false)
 
@@ -749,7 +793,7 @@ export function CategoryAnalytics({
     <>
       <Card>
         <CardContent className="pt-6">
-          {loading ? (
+          {effectiveLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-4 w-32" />
               <div className="space-y-2">
@@ -762,11 +806,13 @@ export function CategoryAnalytics({
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <p className="text-sm font-medium">Failed to load</p>
-              <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
-                Retry
-              </Button>
+              {!externalBreakdownData && (
+                <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
+                  Retry
+                </Button>
+              )}
             </div>
-          ) : !data || data.summary.totalCount === 0 ? (
+          ) : !displayData || displayData.summary.totalCount === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Minus className="size-8 text-muted-foreground mb-2" />
               <p className="text-sm text-muted-foreground">No data</p>
@@ -780,14 +826,14 @@ export function CategoryAnalytics({
               >
                 <h3 className="text-sm font-semibold">Categories</h3>
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="font-medium">{formatCurrency(data.summary.totalSpend)}</span>
+                  <span className="font-medium">{formatCurrency(displayData.summary.totalSpend)}</span>
                   <ChevronDown className={cn("size-4 text-muted-foreground transition-transform md:hidden", compactOpen && "rotate-180")} />
                 </div>
               </button>
 
               {/* Top outflow categories */}
               {(() => {
-                const topCategories = data.outflowPieData
+                const topCategories = displayData.outflowPieData
                   .filter((item) => item.parentId === null)
                   .sort((a, b) => b.value - a.value)
                 const shown = topCategories.slice(0, 3)
@@ -816,11 +862,11 @@ export function CategoryAnalytics({
 
               {/* Footer stats */}
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span>{data.summary.totalCount} transactions</span>
-                {data.summary.uncategorizedCount > 0 && (
+                <span>{displayData?.summary.totalCount} transactions</span>
+                {(displayData?.summary.uncategorizedCount || 0) > 0 && (
                   <>
                     <span>·</span>
-                    <span className="text-amber-600">{data.summary.uncategorizedCount} uncategorized</span>
+                    <span className="text-amber-600">{displayData?.summary.uncategorizedCount} uncategorized</span>
                   </>
                 )}
               </div>
@@ -914,7 +960,7 @@ export function CategoryAnalytics({
   // Full-size mode
   return (
     <div>
-      {loading ? (
+      {effectiveLoading ? (
         <AnalyticsSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center rounded-md border py-12 text-center">
@@ -922,11 +968,13 @@ export function CategoryAnalytics({
           <p className="text-sm text-muted-foreground mt-1">
             Could not load analytics data.
           </p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>
-            Retry
-          </Button>
+          {!externalBreakdownData && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>
+              Retry
+            </Button>
+          )}
         </div>
-      ) : !data || data.summary.totalCount === 0 ? (
+      ) : !displayData || displayData.summary.totalCount === 0 ? (
         <EmptyState />
       ) : (
         <div className="space-y-4">
@@ -936,7 +984,7 @@ export function CategoryAnalytics({
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Top Outflow</p>
                 <p className="text-lg font-semibold mt-1">
-                  {data.summary.topCategory || "N/A"}
+                  {displayData.summary.topCategory || "N/A"}
                 </p>
               </CardContent>
             </Card>
@@ -944,7 +992,7 @@ export function CategoryAnalytics({
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Top Inflow</p>
                 <p className="text-lg font-semibold mt-1">
-                  {data.summary.topInflowCategory || "N/A"}
+                  {displayData.summary.topInflowCategory || "N/A"}
                 </p>
               </CardContent>
             </Card>
@@ -952,9 +1000,9 @@ export function CategoryAnalytics({
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Uncategorized</p>
                 <p className="text-lg font-semibold mt-1">
-                  {data.summary.uncategorizedCount}{" "}
+                  {displayData.summary.uncategorizedCount}{" "}
                   <span className="text-sm font-normal text-muted-foreground">
-                    transaction{data.summary.uncategorizedCount !== 1 ? "s" : ""}
+                    transaction{displayData.summary.uncategorizedCount !== 1 ? "s" : ""}
                   </span>
                 </p>
               </CardContent>
@@ -963,7 +1011,7 @@ export function CategoryAnalytics({
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Avg Transaction</p>
                 <p className="text-lg font-semibold mt-1">
-                  {formatCurrency(data.summary.averageTransaction)}
+                  {formatCurrency(displayData.summary.averageTransaction)}
                 </p>
               </CardContent>
             </Card>
@@ -1011,11 +1059,13 @@ export function CategoryAnalytics({
                 onSliceSelect={handleSliceSelect}
               />
             </div>
-            <CategoryTrendChart
-              data={data.trendData}
-              categories={data.trendCategories}
-              colors={data.trendColors}
-            />
+            {displayData && (
+              <CategoryTrendChart
+                data={displayData.trendData}
+                categories={displayData.trendCategories}
+                colors={displayData.trendColors}
+              />
+            )}
           </div>
         </div>
       )}

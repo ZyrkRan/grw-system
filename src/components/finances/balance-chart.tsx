@@ -117,19 +117,26 @@ function BalanceSkeleton() {
 }
 
 export function BalanceChart({
+  data: externalData,
+  isLoading: externalLoading,
   accountId,
   timeframe,
   categoryGroup = "all",
   compact = false,
 }: {
+  data?: BalanceData
+  isLoading?: boolean
   accountId?: string
-  timeframe: TimeframeValue
+  timeframe?: TimeframeValue
   categoryGroup?: "all" | "business" | "personal"
   compact?: boolean
 }) {
   const [data, setData] = useState<BalanceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+
+  const effectiveData = externalData || null
+  const effectiveLoading = externalData !== undefined ? (externalLoading ?? false) : loading
 
   // Multi-account state (only for full-size mode)
   const [selectedAccountIds, setSelectedAccountIds] = useState<number[]>([])
@@ -140,7 +147,7 @@ export function BalanceChart({
 
   // Auto-calculate granularity based on timeframe duration
   const granularity: Granularity = (() => {
-    if (!timeframe.dateFrom || !timeframe.dateTo) return "monthly"
+    if (!timeframe?.dateFrom || !timeframe?.dateTo) return "monthly"
     const fromDate = new Date(timeframe.dateFrom)
     const toDate = new Date(timeframe.dateTo)
     const durationMs = toDate.getTime() - fromDate.getTime()
@@ -226,8 +233,8 @@ export function BalanceChart({
       const results = await Promise.all(
         selectedAccountIds.map(async (accId) => {
           const params = new URLSearchParams({ granularity, accountId: String(accId) })
-          if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
-          if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
+          if (timeframe?.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+          if (timeframe?.dateTo) params.set("dateTo", timeframe.dateTo)
           if (categoryGroup && categoryGroup !== "all") params.set("categoryGroup", categoryGroup)
           const res = await fetch(`/api/finances/analytics/balance?${params}`)
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -272,12 +279,14 @@ export function BalanceChart({
   }, [compact, fetchMultiAccountData])
 
   const fetchData = useCallback(async () => {
+    if (!timeframe || !accountId) return
+
     setLoading(true)
     setError(false)
     try {
       const params = new URLSearchParams({ granularity })
-      if (timeframe.dateFrom) params.set("dateFrom", timeframe.dateFrom)
-      if (timeframe.dateTo) params.set("dateTo", timeframe.dateTo)
+      if (timeframe?.dateFrom) params.set("dateFrom", timeframe.dateFrom)
+      if (timeframe?.dateTo) params.set("dateTo", timeframe.dateTo)
       if (accountId && accountId !== "all") {
         params.set("accountId", accountId)
       }
@@ -303,11 +312,11 @@ export function BalanceChart({
   }, [granularity, timeframe, accountId, categoryGroup])
 
   useEffect(() => {
-    // Only fetch single-account data when NOT in multi-account mode
-    if (compact || selectedAccountIds.length === 0) {
+    // Only fetch single-account data when NOT in multi-account mode and external data is not provided
+    if (externalData === undefined && (compact || selectedAccountIds.length === 0) && timeframe && accountId) {
       fetchData()
     }
-  }, [fetchData, compact, selectedAccountIds.length])
+  }, [fetchData, externalData, compact, selectedAccountIds.length, timeframe, accountId])
 
   // Multi-account tooltip component
   function MultiAccountTooltip({ active, payload, label }: any) {
@@ -342,7 +351,7 @@ export function BalanceChart({
   // Aggregated summary for multi-account mode
   const aggregatedSummary = useMemo(() => {
     if (selectedAccountIds.length === 0 || !multiAccountData.length) {
-      return data?.summary || null
+      return (effectiveData || data)?.summary || null
     }
 
     // Calculate from multi-account data
@@ -365,9 +374,9 @@ export function BalanceChart({
       highBalance: endBalance, // Simplified
       lowBalance: startBalance, // Simplified
     }
-  }, [selectedAccountIds, multiAccountData, data])
+  }, [selectedAccountIds, multiAccountData, effectiveData, data])
 
-  const summary = selectedAccountIds.length > 0 ? aggregatedSummary : data?.summary
+  const summary = selectedAccountIds.length > 0 ? aggregatedSummary : (effectiveData || data)?.summary
 
   const netIcon =
     summary && summary.netChange > 0 ? (
@@ -391,7 +400,7 @@ export function BalanceChart({
     return (
       <Card>
         <CardContent className="pt-6">
-          {loading ? (
+          {effectiveLoading ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-32" />
               <div className="flex items-end justify-between gap-3">
@@ -409,11 +418,13 @@ export function BalanceChart({
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <p className="text-sm font-medium">Failed to load</p>
-              <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
-                Retry
-              </Button>
+              {!externalData && (
+                <Button variant="ghost" size="sm" className="mt-2" onClick={fetchData}>
+                  Retry
+                </Button>
+              )}
             </div>
-          ) : !data || data.points.length === 0 ? (
+          ) : !(effectiveData || data) || (effectiveData || data)?.points.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Minus className="size-8 text-muted-foreground mb-2" />
               <p className="text-sm text-muted-foreground">No data</p>
@@ -432,11 +443,11 @@ export function BalanceChart({
               {/* Hero balance + sparkline */}
               <div className="flex items-end justify-between gap-3">
                 <div>
-                  <p className="text-lg font-bold">{formatCurrency(data.summary.endBalance)}</p>
+                  <p className="text-lg font-bold">{formatCurrency((effectiveData || data)?.summary.endBalance || 0)}</p>
                   <p className="text-xs text-muted-foreground">Current Balance</p>
                 </div>
                 <ChartContainer config={balanceChartConfig} className="h-[50px] w-[100px] shrink-0">
-                  <LineChart data={data.points}>
+                  <LineChart data={(effectiveData || data)?.points || []}>
                     <Line
                       type="monotone"
                       dataKey="balance"
@@ -452,15 +463,15 @@ export function BalanceChart({
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-muted/50 p-2.5">
                   <span className="text-xs text-muted-foreground">Start</span>
-                  <p className="text-sm font-semibold">{formatCurrency(data.summary.startBalance)}</p>
+                  <p className="text-sm font-semibold">{formatCurrency((effectiveData || data)?.summary.startBalance || 0)}</p>
                 </div>
-                <div className={cn("rounded-lg p-2.5", data.summary.netChange >= 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-red-50 dark:bg-red-950/30")}>
+                <div className={cn("rounded-lg p-2.5", ((effectiveData || data)?.summary.netChange || 0) >= 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-red-50 dark:bg-red-950/30")}>
                   <div className="flex items-center gap-1">
                     <span className="text-xs text-muted-foreground">Change</span>
                     {netIcon}
                   </div>
                   <p className={cn("text-sm font-semibold", netColor)}>
-                    {data.summary.netChange >= 0 ? "+" : ""}{formatCurrency(data.summary.netChange)}
+                    {((effectiveData || data)?.summary.netChange || 0) >= 0 ? "+" : ""}{formatCurrency((effectiveData || data)?.summary.netChange || 0)}
                   </p>
                 </div>
               </div>
@@ -469,7 +480,7 @@ export function BalanceChart({
               <div className={cn(compactOpen ? "block" : "hidden md:block")}>
                 <Separator className="mb-3" />
                 <ChartContainer config={balanceChartConfig} className="h-[200px] w-full">
-                  <LineChart accessibilityLayer data={data.points} margin={{ right: 12 }}>
+                  <LineChart accessibilityLayer data={(effectiveData || data)?.points || []} margin={{ right: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis
                       dataKey="label"
@@ -514,7 +525,7 @@ export function BalanceChart({
   // Full-size mode
   return (
     <div>
-      {loading || multiAccountLoading ? (
+      {effectiveLoading || multiAccountLoading ? (
         <BalanceSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center rounded-md border py-12 text-center">
@@ -522,11 +533,13 @@ export function BalanceChart({
           <p className="text-sm text-muted-foreground mt-1">
             Could not load balance data.
           </p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>
-            Retry
-          </Button>
+          {!externalData && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>
+              Retry
+            </Button>
+          )}
         </div>
-      ) : selectedAccountIds.length === 0 && (!data || data.points.length === 0) ? (
+      ) : selectedAccountIds.length === 0 && (!(effectiveData || data) || (effectiveData || data)?.points.length === 0) ? (
         <div className="flex flex-col items-center justify-center rounded-md border py-12 text-center">
           <Minus className="size-12 text-muted-foreground mb-4" />
           <p className="text-lg font-medium">No balance data</p>
@@ -582,7 +595,7 @@ export function BalanceChart({
                 <BalanceChartAccountSelector
                   selectedAccountIds={selectedAccountIds}
                   onSelectionChange={setSelectedAccountIds}
-                  disabled={loading || multiAccountLoading}
+                  disabled={effectiveLoading || multiAccountLoading}
                 />
               </div>
 
@@ -590,7 +603,7 @@ export function BalanceChart({
               {selectedAccountIds.length === 0 ? (
                 // Single-account mode (existing chart)
                 <ChartContainer config={balanceChartConfig} className="min-h-[300px] w-full">
-                  <LineChart accessibilityLayer data={data?.points || []}>
+                  <LineChart accessibilityLayer data={(effectiveData || data)?.points || []}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="label" tickLine={false} axisLine={false} />
                     <YAxis
