@@ -2,6 +2,7 @@
 // Server-side auto-categorization using user-defined rules (regex patterns)
 // This runs automatically on Plaid sync and CSV import.
 // ---------------------------------------------------------------------------
+import { matchesRule } from "@/lib/tax-utils"
 
 import { prisma } from "@/lib/prisma"
 
@@ -52,7 +53,7 @@ export async function autoCategorizeTransactions(
   const compiledRules = rules
     .map((rule) => {
       try {
-        return { regex: new RegExp(rule.pattern, "i"), categoryId: rule.categoryId, name: rule.pattern }
+        return { regex: new RegExp(rule.pattern, "i"), categoryId: rule.categoryId, name: rule.pattern, pattern: rule.pattern }
       } catch {
         return null
       }
@@ -65,7 +66,7 @@ export async function autoCategorizeTransactions(
   for (const tx of transactions) {
     const textToMatch = `${tx.description} ${tx.merchantName || ""}`
     for (const rule of compiledRules) {
-      if (rule.regex.test(textToMatch)) {
+      if (matchesRule(textToMatch, rule.regex, rule.pattern)) {
         results.push({
           transactionId: tx.id,
           categoryId: rule.categoryId,
