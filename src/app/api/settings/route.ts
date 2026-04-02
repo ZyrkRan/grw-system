@@ -28,6 +28,7 @@ export async function GET() {
           companyPhone: null,
           companyEmail: null,
           companyWebsite: null,
+          assistantInstructions: null,
           createdAt: null,
           updatedAt: null,
         },
@@ -67,6 +68,7 @@ export async function PATCH(request: NextRequest) {
       "companyWebsite",
       "ollamaUrl",
       "ollamaModel",
+      "assistantInstructions",
     ]
 
     // Filter to only allowed fields

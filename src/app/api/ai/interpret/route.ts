@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { serverGenerate, checkServerOllamaHealth } from "@/lib/ai/ollama-server"
+import { serverGenerate, checkServerOllamaHealth, getAssistantInstructions } from "@/lib/ai/ollama-server"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -27,25 +27,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const system = `You are a concise financial advisor analyzing a small business owner's spending data. They run personal and business expenses through the same bank account and want to reduce debt. Give practical, actionable insights in 2-3 sentences. Be direct and specific about numbers. Do not use markdown formatting.`
+    // Load user-editable base instructions, then append interpret-specific constraints
+    const instructions = await getAssistantInstructions()
+
+    const system = `${instructions}
+
+# Interpret Mode
+You are analyzing a specific data section. Give practical, actionable insights in 2-3 sentences. Be direct and specific about numbers. Do not use markdown formatting. If the data is insufficient to draw a conclusion, say so.`
 
     let prompt = ""
 
+    // /no_think disables qwen3's internal reasoning chain for direct, data-grounded answers
     switch (section) {
       case "spending-trend":
-        prompt = `Analyze this monthly spending trend and identify patterns:\n${JSON.stringify(data)}\nWhat's the overall trend and what should the user watch out for?`
+        prompt = `/no_think\nAnalyze this monthly spending trend and identify patterns:\n${JSON.stringify(data)}\nWhat's the overall trend and what should the user watch out for?`
         break
       case "personal-business":
-        prompt = `Analyze this personal vs business spending split:\n${JSON.stringify(data)}\nIs the split healthy? What adjustments would help?`
+        prompt = `/no_think\nAnalyze this personal vs business spending split:\n${JSON.stringify(data)}\nIs the split healthy? What adjustments would help?`
         break
       case "top-categories":
-        prompt = `These are the user's top expense categories over the last 3 months:\n${JSON.stringify(data)}\nWhich categories have the most room for reduction?`
+        prompt = `/no_think\nThese are the user's top expense categories over the last 3 months:\n${JSON.stringify(data)}\nWhich categories have the most room for reduction?`
         break
       case "recurring-charges":
-        prompt = `These are detected recurring charges:\n${JSON.stringify(data)}\nWhich ones might be unnecessary or could be reduced? What's the total monthly recurring cost?`
+        prompt = `/no_think\nThese are detected recurring charges:\n${JSON.stringify(data)}\nWhich ones might be unnecessary or could be reduced? What's the total monthly recurring cost?`
         break
       case "debt-payoff":
-        prompt = `Analyze these credit account balances and payment projections:\n${JSON.stringify(data)}\nWhat strategy would pay off debt fastest? Be specific about amounts.`
+        prompt = `/no_think\nAnalyze these credit account balances and payment projections:\n${JSON.stringify(data)}\nWhat strategy would pay off debt fastest? Be specific about amounts.`
         break
       default:
         return NextResponse.json(
@@ -54,7 +61,7 @@ export async function POST(request: NextRequest) {
         )
     }
 
-    const response = await serverGenerate({ prompt, system, temperature: 0.3 })
+    const response = await serverGenerate({ prompt, system, temperature: 0.1 })
 
     return NextResponse.json({ success: true, data: { interpretation: response } })
   } catch (error) {

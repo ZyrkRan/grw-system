@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { prisma } from "@/lib/prisma"
+import { DEFAULT_ASSISTANT_INSTRUCTIONS } from "@/lib/ai/default-instructions"
 
 const DEFAULT_URL = "http://localhost:11434"
 const DEFAULT_MODEL = "mistral"
@@ -27,6 +28,17 @@ async function getServerConfig(): Promise<ServerOllamaConfig> {
     url: process.env.OLLAMA_URL || DEFAULT_URL,
     model: process.env.OLLAMA_MODEL || DEFAULT_MODEL,
   }
+}
+
+export async function getAssistantInstructions(): Promise<string> {
+  try {
+    const settings = await prisma.settings.findFirst()
+    const custom = settings?.assistantInstructions?.trim()
+    if (custom) return custom
+  } catch {
+    // Fall through to default
+  }
+  return DEFAULT_ASSISTANT_INSTRUCTIONS
 }
 
 export async function checkServerOllamaHealth(): Promise<boolean> {
@@ -58,6 +70,7 @@ export async function serverGenerate(options: {
       prompt: options.prompt,
       system: options.system,
       stream: false,
+      think: false,
       options: { temperature: options.temperature ?? 0.3 },
       ...(options.format && { format: options.format }),
     }),
@@ -87,6 +100,7 @@ export async function serverGenerateStream(options: {
       prompt: options.prompt,
       system: options.system,
       stream: true,
+      think: false,
       options: { temperature: options.temperature ?? 0.3 },
     }),
   })

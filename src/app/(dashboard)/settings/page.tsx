@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  ScrollText,
+  RotateCcw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,6 +53,7 @@ import {
   listModels,
   type OllamaModel,
 } from "@/lib/ollama"
+import { DEFAULT_ASSISTANT_INSTRUCTIONS } from "@/lib/ai/default-instructions"
 
 interface CompanySettings {
   id: number
@@ -71,6 +74,7 @@ export default function SettingsPage() {
       <CompanySettingsSection />
       <ProfileSection />
       <OllamaSection />
+      <AssistantInstructionsSection />
     </div>
   )
 }
@@ -729,3 +733,138 @@ function OllamaSection() {
   )
 }
 
+// ─── AI Assistant Instructions ───────────────────────────────────────────────
+
+function AssistantInstructionsSection() {
+  const [instructions, setInstructions] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [message, setMessage] = useState<{
+    type: "success" | "error"
+    text: string
+  } | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/settings")
+        const json = await res.json()
+        if (json.success && json.data) {
+          setInstructions(
+            json.data.assistantInstructions?.trim() || DEFAULT_ASSISTANT_INSTRUCTIONS
+          )
+        } else {
+          setInstructions(DEFAULT_ASSISTANT_INSTRUCTIONS)
+        }
+      } catch {
+        setInstructions(DEFAULT_ASSISTANT_INSTRUCTIONS)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  async function handleSave() {
+    setIsSaving(true)
+    setMessage(null)
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assistantInstructions: instructions }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setMessage({ type: "success", text: "Instructions saved." })
+      } else {
+        setMessage({ type: "error", text: json.error || "Failed to save." })
+      }
+    } catch {
+      setMessage({ type: "error", text: "Failed to save instructions." })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  function handleReset() {
+    setInstructions(DEFAULT_ASSISTANT_INSTRUCTIONS)
+    setMessage(null)
+  }
+
+  return (
+    <SettingsSection
+      icon={ScrollText}
+      title="AI Assistant Instructions"
+      description="Customize how the AI assistant behaves, its role, accuracy rules, and your business context."
+      defaultOpen={false}
+    >
+      <div className="space-y-4">
+        {/* Info box */}
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-950">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
+            These instructions are included in every AI conversation. They define the
+            assistant&apos;s persona, accuracy rules, and your business context. Your actual
+            financial and service data is added automatically &mdash; you don&apos;t need to
+            include data here.
+          </p>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="h-[400px] w-full" />
+        ) : (
+          <textarea
+            value={instructions}
+            onChange={(e) => {
+              setInstructions(e.target.value)
+              setMessage(null)
+            }}
+            rows={20}
+            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring w-full rounded-md border px-3 py-2 font-mono text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            placeholder="Enter instructions for the AI assistant..."
+          />
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          {instructions.length.toLocaleString()} characters
+          {instructions.length > 4000 && (
+            <span className="ml-1 text-amber-600 dark:text-amber-400">
+              &mdash; Long instructions may reduce response quality with smaller models.
+            </span>
+          )}
+        </p>
+
+        {message && (
+          <div
+            className={`rounded-md px-3 py-2 text-sm ${
+              message.type === "success"
+                ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400"
+                : "bg-destructive/10 text-destructive"
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button onClick={handleSave} disabled={isSaving || isLoading}>
+            {isSaving ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 size-4" />
+            )}
+            Save Instructions
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleReset}
+            disabled={isLoading}
+          >
+            <RotateCcw className="mr-2 size-4" />
+            Reset to Default
+          </Button>
+        </div>
+      </div>
+    </SettingsSection>
+  )
+}
