@@ -13,16 +13,14 @@ export async function GET(request: NextRequest) {
 
   const userId = session.user!.id!
 
-  try {
-    // Ensure Personal/Business system groups exist (non-blocking — don't fail the whole request)
-    try {
-      await ensureSystemGroups(userId)
-      // Note: migrateExistingCategories removed — all categories are already properly placed
-    } catch (err) {
-      console.error("Failed to ensure system groups:", err)
-    }
+  const lean = request.nextUrl.searchParams.get("lean") === "1"
 
-    // Include user-owned categories and default categories (userId is null)
+  try {
+    // Build includes — skip _count in lean mode (tax-review doesn't need counts)
+    const childInclude = lean
+      ? { children: { orderBy: { position: "asc" as const }, include: { children: { orderBy: { position: "asc" as const } } } } }
+      : { _count: { select: { transactions: true } }, children: { orderBy: { position: "asc" as const }, include: { _count: { select: { transactions: true } }, children: { orderBy: { position: "asc" as const }, include: { _count: { select: { transactions: true } } } } } } }
+
     const categories = await prisma.transactionCategory.findMany({
       where: {
         parentId: null,
@@ -32,24 +30,20 @@ export async function GET(request: NextRequest) {
         ],
       },
       orderBy: { position: "asc" },
-      include: {
-        _count: {
-          select: { transactions: true },
-        },
-        children: {
-          orderBy: { position: "asc" },
-          include: {
-            _count: { select: { transactions: true } },
-            children: {
-              orderBy: { position: "asc" },
-              include: {
-                _count: { select: { transactions: true } },
-              },
-            },
-          },
-        },
-      },
+      include: childInclude,
     })
+
+    // Ensure system groups exist if missing (rare — only on first-ever load)
+    if (!categories.some((c) => c.isSystemGroup)) {
+      await ensureSystemGroups(userId)
+      // Re-fetch with system groups now present
+      const updated = await prisma.transactionCategory.findMany({
+        where: { parentId: null, OR: [{ userId }, { userId: null, isDefault: true }] },
+        orderBy: { position: "asc" },
+        include: childInclude,
+      })
+      return NextResponse.json({ success: true, data: updated })
+    }
 
     return NextResponse.json({ success: true, data: categories })
   } catch (error) {

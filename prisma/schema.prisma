@@ -68,6 +68,8 @@ model User {
   transactionAttachments   TransactionAttachment[]
   routes                   Route[]
   bills                    Bill[]
+  taxTransactions          TaxTransaction[]
+  taxCategoryRules         TaxCategoryRule[]
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -82,10 +84,11 @@ model Settings {
   companyPhone   String?
   companyEmail   String?
   companyWebsite String?
-  ollamaUrl      String?
-  ollamaModel    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  ollamaUrl               String?
+  ollamaModel             String?
+  assistantInstructions   String?  @db.Text
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 // ─── Customer ────────────────────────────────────────────────────────────────
@@ -334,6 +337,7 @@ model TransactionCategory {
   parentId         Int?
   isGroup          Boolean  @default(false)
   attachmentPrompt Boolean  @default(false)
+  isStarred        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -343,6 +347,8 @@ model TransactionCategory {
   parent              TransactionCategory?  @relation("CategoryParent", fields: [parentId], references: [id])
   user                User?                 @relation(fields: [userId], references: [id])
   bills               Bill[]
+  taxTransactions     TaxTransaction[]
+  taxCategoryRules    TaxCategoryRule[]
 }
 
 // ─── CategorizationRule ──────────────────────────────────────────────────────
@@ -429,6 +435,45 @@ model Route {
 }
 
 // ─── RouteCustomer ─────────────────────────────────────────────────────────
+
+// ─── Tax Review (temporary feature) ─────────────────────────────────────────
+
+model TaxTransaction {
+  id           Int      @id @default(autoincrement())
+  userId       String
+  date         DateTime
+  description  String
+  merchantName String?
+  amount       Decimal  @db.Decimal(10, 2)
+  type         String   // "INFLOW" | "OUTFLOW"
+  categoryId   Int?
+  taxType      String?  // "business" | "personal" | "service_income" | null = uncategorized
+  isReviewed   Boolean  @default(false)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user     User                 @relation(fields: [userId], references: [id])
+  category TransactionCategory? @relation(fields: [categoryId], references: [id])
+
+  @@index([userId, date])
+  @@index([userId, taxType])
+}
+
+model TaxCategoryRule {
+  id         Int      @id @default(autoincrement())
+  userId     String
+  pattern    String   // regex matched against description/merchantName
+  categoryId Int?
+  taxType    String   // "business" | "personal" | "service_income"
+  applyCount Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  user     User                 @relation(fields: [userId], references: [id])
+  category TransactionCategory? @relation(fields: [categoryId], references: [id])
+
+  @@index([userId])
+}
 
 model RouteCustomer {
   id         Int      @id @default(autoincrement())

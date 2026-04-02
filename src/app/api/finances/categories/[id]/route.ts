@@ -43,13 +43,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    // System groups can only have their color changed
+    // System groups can only have their color or isStarred changed
     if (category.isSystemGroup) {
       const body = await request.json()
-      if (body.color) {
+      if (body.color || body.isStarred !== undefined) {
         const updated = await prisma.transactionCategory.update({
           where: { id: categoryId },
-          data: { color: body.color },
+          data: {
+            ...(body.color && { color: body.color }),
+            ...(body.isStarred !== undefined && { isStarred: body.isStarred }),
+          },
           include: { _count: { select: { transactions: true } } },
         })
         return NextResponse.json({ success: true, data: updated })
@@ -70,7 +73,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const { name, color, parentId, isGroup, position, attachmentPrompt } = parsed.data
+    const { name, color, parentId, isGroup, position, attachmentPrompt, isStarred } = parsed.data
 
     // If name is changing, regenerate slug
     let slug: string | undefined
@@ -92,6 +95,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(isGroup !== undefined && { isGroup }),
         ...(position !== undefined && { position }),
         ...(attachmentPrompt !== undefined && { attachmentPrompt }),
+        ...(isStarred !== undefined && { isStarred }),
       },
       include: {
         _count: { select: { transactions: true } },

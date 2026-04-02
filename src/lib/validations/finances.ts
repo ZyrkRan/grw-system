@@ -133,6 +133,7 @@ export const updateCategorySchema = z.object({
   isGroup: z.boolean().optional(),
   position: z.number().int().min(0).optional(),
   attachmentPrompt: z.boolean().optional(),
+  isStarred: z.boolean().optional(),
 })
 
 export const reorderCategoriesSchema = z.object({
