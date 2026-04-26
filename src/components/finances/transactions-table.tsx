@@ -591,9 +591,9 @@ export function TransactionTable({
           </label>
         )}
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-muted/40 rounded-md p-0.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 bg-muted/40 rounded-md p-0.5 overflow-x-auto max-w-full">
             {statusFilters.map((f) => (
               <button
                 key={f.value}
@@ -738,7 +738,7 @@ export function TransactionTable({
           </Popover>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           {selected.size > 0 && (
             <Popover open={bulkPopoverOpen} onOpenChange={setBulkPopoverOpen}>
               <PopoverTrigger asChild>

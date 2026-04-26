@@ -167,9 +167,9 @@ export function AnnualSummary({
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold">Annual Summary</h2>
             <p className="text-xs text-muted-foreground">
               {totals.totalTransactions} transactions across {monthlyBreakdown.length} months
@@ -201,7 +201,7 @@ export function AnnualSummary({
         <Button
           variant="outline"
           size="sm"
-          className="text-xs gap-1.5"
+          className="text-xs gap-1.5 self-start sm:self-auto"
           onClick={handleDownloadPdf}
           disabled={downloading}
         >
@@ -238,9 +238,9 @@ export function AnnualSummary({
           <div className="px-4 py-3 border-b">
             <h3 className="text-sm font-semibold">Monthly Breakdown</h3>
           </div>
-          <div className="divide-y">
+          <div className="divide-y overflow-x-auto">
             {/* Header row */}
-            <div className="grid grid-cols-[1fr_90px_90px_90px_90px_80px_32px] gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="grid grid-cols-[1fr_90px_90px_90px_90px_80px_32px] gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide min-w-[640px]">
               <span>Month</span>
               <span className="text-right">Income</span>
               <span className="text-right">Biz Exp.</span>
@@ -255,7 +255,7 @@ export function AnnualSummary({
               return (
                 <div
                   key={m.month}
-                  className="grid grid-cols-[1fr_90px_90px_90px_90px_80px_32px] gap-2 px-4 py-2.5 text-sm hover:bg-muted/30 transition-colors group items-center"
+                  className="grid grid-cols-[1fr_90px_90px_90px_90px_80px_32px] gap-2 px-4 py-2.5 text-sm hover:bg-muted/30 transition-colors group items-center min-w-[640px]"
                 >
                   <span className="font-medium text-xs">{formatMonthLong(m.month)}</span>
                   <span className="text-right text-xs tabular-nums">{fmt(m.totalIncome)}</span>
@@ -282,7 +282,7 @@ export function AnnualSummary({
               )
             })}
             {/* Totals row */}
-            <div className="grid grid-cols-[1fr_90px_90px_90px_90px_80px_32px] gap-2 px-4 py-2.5 text-sm font-semibold bg-muted/20 items-center">
+            <div className="grid grid-cols-[1fr_90px_90px_90px_90px_80px_32px] gap-2 px-4 py-2.5 text-sm font-semibold bg-muted/20 items-center min-w-[640px]">
               <span className="text-xs">Total</span>
               <span className="text-right text-xs tabular-nums">{fmt(totals.income)}</span>
               <span className="text-right text-xs tabular-nums text-red-600 dark:text-red-400">{fmt(totals.businessExpenses)}</span>

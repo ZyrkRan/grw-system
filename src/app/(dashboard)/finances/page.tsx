@@ -8,10 +8,18 @@ import {
   ChevronLeft,
   ChevronRight,
   BarChart3,
+  CalendarDays,
+  ReceiptText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 
 import {
@@ -95,6 +103,8 @@ export default function FinancesV2Page() {
   const [rulesOpen, setRulesOpen] = useState(false)
   const [showAnnualSummary, setShowAnnualSummary] = useState(false)
   const [annualYear, setAnnualYear] = useState<number>(new Date().getFullYear())
+  const [monthsSheetOpen, setMonthsSheetOpen] = useState(false)
+  const [billsSheetOpen, setBillsSheetOpen] = useState(false)
 
   const [reportData, setReportData] = useState<ReportData | null>(null)
   const [loadingReport, setLoadingReport] = useState(false)
@@ -455,6 +465,7 @@ export default function FinancesV2Page() {
     // Expand the owning year if collapsed
     const [y] = m.split("-").map(Number)
     setExpandedYears((prev) => (prev.has(y) ? prev : new Set([...prev, y])))
+    setMonthsSheetOpen(false)
   }
 
   function handleToggleYear(y: number) {
@@ -623,14 +634,14 @@ export default function FinancesV2Page() {
   return (
     <div className="flex flex-col gap-4 h-full">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold">Finances</h1>
           <p className="text-sm text-muted-foreground">
             Bank transactions, categorization, bills, and reports
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <AccountSwitcher
             selectedAccountId={accountId}
             onAccountChange={setAccountId}
@@ -640,11 +651,19 @@ export default function FinancesV2Page() {
             variant={showAnnualSummary ? "default" : "outline"}
             size="sm"
             onClick={() => setShowAnnualSummary((v) => !v)}
+            title="Annual Summary"
           >
-            <BarChart3 className="size-4 mr-1.5" /> Annual Summary
+            <BarChart3 className="size-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Annual Summary</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setRulesOpen(true)}>
-            <BookMarked className="size-4 mr-1.5" /> Rules
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRulesOpen(true)}
+            title="Rules"
+          >
+            <BookMarked className="size-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Rules</span>
           </Button>
         </div>
       </div>
@@ -727,8 +746,8 @@ export default function FinancesV2Page() {
 
       {/* Main layout */}
       <div className={cn("flex gap-4 flex-1 min-h-0", showAnnualSummary && "hidden")}>
-        {/* Year sidebar */}
-        <div className="w-56 shrink-0">
+        {/* Year sidebar — hidden on mobile, available via Sheet */}
+        <div className="hidden lg:block w-56 shrink-0">
           <Card className="sticky top-4">
             <CardContent className="p-2 overflow-y-auto max-h-[calc(100vh-8rem)]">
               {loadingSidebar ? (
@@ -751,7 +770,7 @@ export default function FinancesV2Page() {
         </div>
 
         {/* Main column */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="flex-1 min-w-0 space-y-4 w-full">
           {loadingSidebar ? (
             <div className="space-y-4">
               <Skeleton className="h-7 w-48" />
@@ -769,9 +788,18 @@ export default function FinancesV2Page() {
           ) : (
             <>
               {/* Month header */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="lg:hidden h-7 px-2 mr-1"
+                      title="Months"
+                      onClick={() => setMonthsSheetOpen(true)}
+                    >
+                      <CalendarDays className="size-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -791,7 +819,7 @@ export default function FinancesV2Page() {
                       <ChevronRight className="size-4" />
                     </Button>
                   </div>
-                  <h2 className="font-semibold">
+                  <h2 className="font-semibold truncate">
                     {globalSearch
                       ? `Search: "${globalSearch}"`
                       : globalSearch === ""
@@ -813,6 +841,15 @@ export default function FinancesV2Page() {
                     )
                   )}
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="lg:hidden h-7 px-2 shrink-0"
+                  title="Bills"
+                  onClick={() => setBillsSheetOpen(true)}
+                >
+                  <ReceiptText className="size-4" />
+                </Button>
               </div>
 
               {/* Monthly report */}
@@ -899,11 +936,48 @@ export default function FinancesV2Page() {
           )}
         </div>
 
-        {/* Right sidebar: Bills */}
-        <div className="w-72 shrink-0">
+        {/* Right sidebar: Bills — hidden on mobile, available via Sheet */}
+        <div className="hidden lg:block w-72 shrink-0">
           <BillsPanel refreshKey={syncVersion} accountId={accountId} />
         </div>
       </div>
+
+      {/* Mobile-only Sheets for sidebars */}
+      <Sheet open={monthsSheetOpen} onOpenChange={setMonthsSheetOpen}>
+        <SheetContent side="left" className="w-[88vw] sm:max-w-sm p-0 overflow-y-auto">
+          <SheetHeader className="border-b">
+            <SheetTitle>Months</SheetTitle>
+          </SheetHeader>
+          <div className="p-2">
+            {loadingSidebar ? (
+              <div className="space-y-2 p-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-14 w-full rounded" />
+                ))}
+              </div>
+            ) : (
+              <YearMonthSidebar
+                years={years}
+                selected={selectedMonth}
+                expandedYears={expandedYears}
+                onSelect={handleSelectMonth}
+                onToggleYear={handleToggleYear}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={billsSheetOpen} onOpenChange={setBillsSheetOpen}>
+        <SheetContent side="right" className="w-[88vw] sm:max-w-sm p-0 overflow-y-auto">
+          <SheetHeader className="border-b">
+            <SheetTitle>Bills</SheetTitle>
+          </SheetHeader>
+          <div className="p-2">
+            <BillsPanel refreshKey={syncVersion} accountId={accountId} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Rule manager sheet */}
       <RuleManagerSheet open={rulesOpen} onOpenChange={setRulesOpen} />
