@@ -103,10 +103,10 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const { ids, categoryId } = parsed.data
+    const { ids, categoryId, taxType, isReviewed, saveRule } = parsed.data
 
-    // Verify category ownership if assigning (not clearing)
-    if (categoryId !== null) {
+    // Verify category ownership when a non-null categoryId is being set.
+    if (categoryId !== undefined && categoryId !== null) {
       const category = await prisma.transactionCategory.findFirst({
         where: {
           id: categoryId,
@@ -122,11 +122,54 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Batch update — only update transactions owned by this user
+    // Build the update payload — only include fields the client actually sent.
+    const updateData: Prisma.BankTransactionUpdateManyMutationInput = {
+      ...(categoryId !== undefined && { categoryId }),
+      ...(taxType !== undefined && { taxType }),
+      ...(isReviewed !== undefined && { isReviewed }),
+    }
+    // When the bulk action carries a meaningful categorization update but
+    // the client didn't explicitly set isReviewed, assume they meant to
+    // mark the rows as reviewed — matches tax-review's bulk behavior.
+    if (
+      updateData.isReviewed === undefined &&
+      (categoryId !== undefined || taxType !== undefined)
+    ) {
+      updateData.isReviewed = true
+    }
+
     const result = await prisma.bankTransaction.updateMany({
       where: { id: { in: ids }, userId },
-      data: { categoryId },
+      data: updateData,
     })
+
+    // Inline rule save (same semantics as PATCH /[id])
+    if (saveRule && saveRule.pattern) {
+      try {
+        // eslint-disable-next-line no-new
+        new RegExp(saveRule.pattern, "i")
+        const existing = await prisma.categorizationRule.findFirst({
+          where: {
+            userId,
+            pattern: saveRule.pattern,
+            categoryId: saveRule.categoryId ?? null,
+            taxType: saveRule.taxType ?? null,
+          },
+        })
+        if (!existing) {
+          await prisma.categorizationRule.create({
+            data: {
+              userId,
+              pattern: saveRule.pattern,
+              categoryId: saveRule.categoryId ?? null,
+              taxType: saveRule.taxType ?? null,
+            },
+          })
+        }
+      } catch {
+        // Invalid regex — silently ignore, batch update still succeeded.
+      }
+    }
 
     return NextResponse.json({
       success: true,

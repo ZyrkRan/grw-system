@@ -115,3 +115,6 @@ next-env.d.ts
 *.tmp
 *.temp
 .cache/
+
+# Local data backups (zip dumps before migrations) — never commit
+/backups/

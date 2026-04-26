@@ -33,6 +33,17 @@ export const createTransactionSchema = z.object({
   merchantName: optionalTrimmedString(500),
 })
 
+const taxTypeValue = z.enum(["business", "personal", "service_income"])
+
+// Inline saveRule side-effect body used by PATCH /[id] and POST /batch.
+// When present, creates a CategorizationRule if one doesn't already exist
+// for this (pattern, categoryId, taxType) tuple.
+const saveRuleSchema = z.object({
+  pattern: z.string().min(1).max(500),
+  categoryId: z.coerce.number().int().positive().nullable().optional(),
+  taxType: taxTypeValue.nullable().optional(),
+})
+
 export const updateTransactionSchema = z.object({
   date: dateString.optional(),
   description: trimmedString(500).optional(),
@@ -42,7 +53,13 @@ export const updateTransactionSchema = z.object({
   categoryId: z.coerce.number().int().positive().nullable().optional(),
   serviceLogId: z.coerce.number().int().positive().nullable().optional(),
   merchantName: z.string().max(500).transform((s) => s.trim() || null).nullable().optional(),
-}).refine((data) => Object.keys(data).length > 0, "At least one field must be provided")
+  taxType: taxTypeValue.nullable().optional(),
+  isReviewed: z.boolean().optional(),
+  saveRule: saveRuleSchema.optional(),
+}).refine(
+  (data) => Object.keys(data).filter((k) => k !== "saveRule").length > 0 || !!data.saveRule,
+  "At least one field must be provided"
+)
 
 export const transactionQuerySchema = z.object({
   accountId: z.coerce.number().int().positive().optional(),
@@ -55,6 +72,11 @@ export const transactionQuerySchema = z.object({
   year: z.coerce.number().int().min(1900).max(2100).optional(),
   isPending: z.enum(["true", "false"]).optional(),
   uncategorized: z.enum(["true"]).optional(),
+  // Tax-review-style filters
+  monthKey: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  status: z.enum(["all", "uncategorized", "business", "personal", "mismatched"]).optional(),
+  direction: z.enum(["all", "inflow", "outflow"]).optional(),
+  categoryFilter: z.string().optional(), // "none" or category id as string
   // Pagination
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(250).default(100),
@@ -70,8 +92,14 @@ export const batchDeleteSchema = z.object({
 
 export const batchCategoryAssignSchema = z.object({
   ids: z.array(intId).min(1).max(500),
-  categoryId: z.coerce.number().int().positive().nullable(),
-})
+  categoryId: z.coerce.number().int().positive().nullable().optional(),
+  taxType: taxTypeValue.nullable().optional(),
+  isReviewed: z.boolean().optional(),
+  saveRule: saveRuleSchema.optional(),
+}).refine(
+  (data) => data.categoryId !== undefined || data.taxType !== undefined || data.isReviewed !== undefined,
+  "At least one of categoryId, taxType, or isReviewed must be provided"
+)
 
 // ---------------------------------------------------------------------------
 // Import
@@ -163,13 +191,18 @@ export const ATTACHMENT_ALLOWED_TYPES = [
 
 export const createRuleSchema = z.object({
   pattern: regexPattern,
-  categoryId: intId,
+  categoryId: intId.nullable().optional(),
+  taxType: taxTypeValue.nullable().optional(),
   applyToExisting: z.boolean().default(false),
-})
+}).refine(
+  (data) => data.categoryId !== undefined || data.taxType !== undefined,
+  "At least one of categoryId or taxType must be provided"
+)
 
 export const updateRuleSchema = z.object({
   pattern: regexPattern.optional(),
-  categoryId: intId.optional(),
+  categoryId: z.coerce.number().int().positive().nullable().optional(),
+  taxType: taxTypeValue.nullable().optional(),
 }).refine((data) => Object.keys(data).length > 0, "At least one field must be provided")
 
 // ---------------------------------------------------------------------------

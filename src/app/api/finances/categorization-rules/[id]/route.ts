@@ -49,10 +49,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const { pattern, categoryId } = parsed.data
+    const { pattern, categoryId, taxType } = parsed.data
 
-    // Verify category if changing
-    if (categoryId !== undefined) {
+    // Verify category if changing to a non-null value
+    if (categoryId !== undefined && categoryId !== null) {
       const category = await prisma.transactionCategory.findFirst({
         where: {
           id: categoryId,
@@ -73,6 +73,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data: {
         ...(pattern !== undefined && { pattern }),
         ...(categoryId !== undefined && { categoryId }),
+        ...(taxType !== undefined && { taxType }),
       },
       include: {
         category: {

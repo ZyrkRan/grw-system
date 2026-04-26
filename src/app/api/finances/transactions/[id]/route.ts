@@ -52,7 +52,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const { notes, categoryId, serviceLogId, description, amount, date, type } = parsed.data
+    const {
+      notes,
+      categoryId,
+      serviceLogId,
+      description,
+      amount,
+      date,
+      type,
+      merchantName,
+      taxType,
+      isReviewed,
+      saveRule,
+    } = parsed.data
 
     // If date changes, recalculate statementMonth/statementYear
     let statementMonth: number | undefined
@@ -73,15 +85,56 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(amount !== undefined && { amount }),
         ...(date !== undefined && { date: new Date(date) }),
         ...(type !== undefined && { type }),
+        ...(merchantName !== undefined && { merchantName }),
+        ...(taxType !== undefined && { taxType }),
+        ...(isReviewed !== undefined && { isReviewed }),
         ...(statementMonth !== undefined && { statementMonth }),
         ...(statementYear !== undefined && { statementYear }),
       },
       include: {
         account: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true, color: true } },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            parentId: true,
+            parent: { select: { id: true, name: true, isSystemGroup: true } },
+          },
+        },
         serviceLog: { select: { id: true, serviceName: true } },
       },
     })
+
+    // Inline rule creation: if the client asked to save a rule from this row,
+    // create it (or silently no-op if an identical rule already exists).
+    if (saveRule && saveRule.pattern) {
+      try {
+        // eslint-disable-next-line no-new
+        new RegExp(saveRule.pattern, "i")
+        const existing = await prisma.categorizationRule.findFirst({
+          where: {
+            userId,
+            pattern: saveRule.pattern,
+            categoryId: saveRule.categoryId ?? null,
+            taxType: saveRule.taxType ?? null,
+          },
+        })
+        if (!existing) {
+          await prisma.categorizationRule.create({
+            data: {
+              userId,
+              pattern: saveRule.pattern,
+              categoryId: saveRule.categoryId ?? null,
+              taxType: saveRule.taxType ?? null,
+            },
+          })
+        }
+      } catch {
+        // Invalid regex — quietly ignore the rule save, the transaction
+        // update itself still succeeded.
+      }
+    }
 
     return NextResponse.json({ success: true, data: updated })
   } catch (error) {

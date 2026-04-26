@@ -278,6 +278,8 @@ model BankTransaction {
   plaidTransactionId String?         @unique
   rawPlaidData       Json?
   categoryId         Int?
+  taxType            String?         // "business" | "personal" | "service_income" | null
+  isReviewed         Boolean         @default(false)
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
@@ -287,6 +289,9 @@ model BankTransaction {
   user        User                      @relation(fields: [userId], references: [id])
   attachments TransactionAttachment[]
   billPayment BillPayment?
+
+  @@index([userId, date])
+  @@index([userId, taxType])
 }
 
 // ─── DeletedPlaidTransaction ─────────────────────────────────────────────────
@@ -357,12 +362,19 @@ model CategorizationRule {
   id         Int      @id @default(autoincrement())
   userId     String
   pattern    String
-  categoryId Int
+  categoryId Int?     // null = rule sets only taxType, leaves category alone
+  taxType    String?  // "business" | "personal" | "service_income" | null
+  applyCount Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user     User                @relation(fields: [userId], references: [id])
-  category TransactionCategory @relation(fields: [categoryId], references: [id])
+  user     User                 @relation(fields: [userId], references: [id])
+  category TransactionCategory? @relation(fields: [categoryId], references: [id])
+
+  // NOTE: no @@unique on (userId, pattern) — legacy tax data has patterns
+  // that map to different (category, taxType) tuples. Deduplication is
+  // handled at the application layer.
+  @@index([userId])
 }
 
 // ─── Bill ──────────────────────────────────────────────────────────────────
@@ -436,8 +448,10 @@ model Route {
 
 // ─── RouteCustomer ─────────────────────────────────────────────────────────
 
-// ─── Tax Review (temporary feature) ─────────────────────────────────────────
+// ─── Tax Review (archived 2026-04 — superseded by BankTransaction/CategorizationRule) ──
 
+/// Archived — superseded by BankTransaction after the 2026-04 finances migration.
+/// Read-only; do not add code that writes here. Kept indefinitely as data archive.
 model TaxTransaction {
   id           Int      @id @default(autoincrement())
   userId       String
@@ -460,6 +474,8 @@ model TaxTransaction {
   @@index([userId, taxType])
 }
 
+/// Archived — superseded by CategorizationRule after the 2026-04 finances migration.
+/// Read-only; do not add code that writes here. Kept indefinitely as data archive.
 model TaxCategoryRule {
   id         Int      @id @default(autoincrement())
   userId     String

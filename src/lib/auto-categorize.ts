@@ -2,26 +2,23 @@
 // Server-side auto-categorization using user-defined rules (regex patterns)
 // This runs automatically on Plaid sync and CSV import.
 // ---------------------------------------------------------------------------
-import { matchesRule } from "@/lib/tax-utils"
+import { matchesRule } from "@/lib/categorization-rules"
 
 import { prisma } from "@/lib/prisma"
 
-interface UncategorizedTransaction {
-  id: number
-  description: string
-  merchantName: string | null
-}
-
 interface CategorizationResult {
   transactionId: number
-  categoryId: number
+  categoryId: number | null
+  taxType: string | null
+  ruleId: number
   ruleName: string
 }
 
 /**
  * Auto-categorize transactions using the user's categorization rules.
  * Matches transaction descriptions against regex patterns.
- * Returns the number of transactions that were categorized.
+ * Sets categoryId, taxType, and isReviewed=true on matched rows, and
+ * increments applyCount on the matched rules.
  */
 export async function autoCategorizeTransactions(
   userId: string,
@@ -29,7 +26,6 @@ export async function autoCategorizeTransactions(
 ): Promise<{ categorized: number; results: CategorizationResult[] }> {
   if (transactionIds.length === 0) return { categorized: 0, results: [] }
 
-  // Fetch user's rules
   const rules = await prisma.categorizationRule.findMany({
     where: { userId },
     include: { category: { select: { id: true, name: true } } },
@@ -37,7 +33,6 @@ export async function autoCategorizeTransactions(
 
   if (rules.length === 0) return { categorized: 0, results: [] }
 
-  // Fetch uncategorized transactions from the given IDs
   const transactions = await prisma.bankTransaction.findMany({
     where: {
       id: { in: transactionIds },
@@ -49,18 +44,22 @@ export async function autoCategorizeTransactions(
 
   if (transactions.length === 0) return { categorized: 0, results: [] }
 
-  // Compile regex patterns
   const compiledRules = rules
     .map((rule) => {
       try {
-        return { regex: new RegExp(rule.pattern, "i"), categoryId: rule.categoryId, name: rule.pattern, pattern: rule.pattern }
+        return {
+          id: rule.id,
+          regex: new RegExp(rule.pattern, "i"),
+          categoryId: rule.categoryId,
+          taxType: rule.taxType,
+          pattern: rule.pattern,
+        }
       } catch {
         return null
       }
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
 
-  // Match transactions against rules
   const results: CategorizationResult[] = []
 
   for (const tx of transactions) {
@@ -70,24 +69,59 @@ export async function autoCategorizeTransactions(
         results.push({
           transactionId: tx.id,
           categoryId: rule.categoryId,
-          ruleName: rule.name,
+          taxType: rule.taxType,
+          ruleId: rule.id,
+          ruleName: rule.pattern,
         })
-        break // First match wins
+        break // first match wins
       }
     }
   }
 
-  // Apply categorizations in batch
-  if (results.length > 0) {
-    await prisma.$transaction(
-      results.map((r) =>
-        prisma.bankTransaction.update({
-          where: { id: r.transactionId },
-          data: { categoryId: r.categoryId },
-        })
-      )
-    )
+  if (results.length === 0) return { categorized: 0, results: [] }
+
+  // Group matches by (categoryId, taxType) for batch updates. A null
+  // categoryId means "taxType-only rule" — don't touch the existing
+  // categoryId when applying.
+  const byBucket = new Map<
+    string,
+    { categoryId: number | null; taxType: string | null; ids: number[] }
+  >()
+  for (const r of results) {
+    const key = `${r.categoryId ?? "null"}|${r.taxType ?? ""}`
+    const bucket = byBucket.get(key)
+    if (bucket) {
+      bucket.ids.push(r.transactionId)
+    } else {
+      byBucket.set(key, { categoryId: r.categoryId, taxType: r.taxType, ids: [r.transactionId] })
+    }
   }
+
+  const ruleCounts = new Map<number, number>()
+  for (const r of results) {
+    ruleCounts.set(r.ruleId, (ruleCounts.get(r.ruleId) ?? 0) + 1)
+  }
+
+  await prisma.$transaction([
+    ...Array.from(byBucket.values()).map((b) =>
+      prisma.bankTransaction.updateMany({
+        where: { id: { in: b.ids } },
+        data: {
+          // Only set categoryId if the rule defines one; otherwise leave
+          // whatever category the row already has.
+          ...(b.categoryId !== null ? { categoryId: b.categoryId } : {}),
+          taxType: b.taxType,
+          isReviewed: true,
+        },
+      })
+    ),
+    ...Array.from(ruleCounts.entries()).map(([ruleId, count]) =>
+      prisma.categorizationRule.update({
+        where: { id: ruleId },
+        data: { applyCount: { increment: count } },
+      })
+    ),
+  ])
 
   return { categorized: results.length, results }
 }

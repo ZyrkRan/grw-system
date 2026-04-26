@@ -11,7 +11,125 @@ import {
 // ---------------------------------------------------------------------------
 // Consolidated analytics endpoint — returns stat cards, inflow/outflow chart,
 // and category breakdown in a single request.
+//
+// `view=sidebar` switches to a lightweight year/month aggregation used by
+// the new /finances sidebar (progress % per month, grouped by year, plus
+// mismatched + uncategorized-income counts for the flag banner).
 // ---------------------------------------------------------------------------
+
+interface MonthStat {
+  month: string
+  total: number
+  categorized: number
+  progress: number
+  income: number
+  businessExpenses: number
+}
+
+interface YearGroup {
+  year: number
+  total: number
+  categorized: number
+  progress: number
+  months: MonthStat[]
+}
+
+async function handleSidebarView(
+  userId: string,
+  accountIdParam: string | null
+): Promise<NextResponse> {
+  const accountId = accountIdParam ? parseInt(accountIdParam, 10) : null
+  const accountFilter = accountId && !isNaN(accountId) ? accountId : null
+
+  // Single pass aggregation: year + month bucket + counts + sums.
+  // Uses the new (userId, date) index.
+  const rows = await prisma.$queryRaw<
+    {
+      year: number
+      month: string
+      total: bigint
+      categorized: bigint
+      income: number | null
+      businessExpenses: number | null
+    }[]
+  >`
+    SELECT
+      EXTRACT(YEAR FROM date)::int AS year,
+      TO_CHAR(date, 'YYYY-MM') AS month,
+      COUNT(*)::bigint AS total,
+      COUNT(*) FILTER (WHERE "taxType" IS NOT NULL)::bigint AS categorized,
+      COALESCE(SUM(amount) FILTER (WHERE type = 'INFLOW'), 0)::float AS income,
+      COALESCE(
+        SUM(amount) FILTER (WHERE type = 'OUTFLOW' AND "taxType" = 'business'),
+        0
+      )::float AS "businessExpenses"
+    FROM "BankTransaction"
+    WHERE "userId" = ${userId}
+      AND (${accountFilter}::int IS NULL OR "accountId" = ${accountFilter}::int)
+    GROUP BY EXTRACT(YEAR FROM date), TO_CHAR(date, 'YYYY-MM')
+    ORDER BY year DESC, month ASC
+  `
+
+  const byYear = new Map<number, YearGroup>()
+  for (const r of rows) {
+    const total = Number(r.total)
+    const categorized = Number(r.categorized)
+    const monthStat: MonthStat = {
+      month: r.month,
+      total,
+      categorized,
+      progress: total === 0 ? 100 : Math.round((categorized / total) * 100),
+      income: r.income ?? 0,
+      businessExpenses: r.businessExpenses ?? 0,
+    }
+    const existing = byYear.get(r.year)
+    if (existing) {
+      existing.months.push(monthStat)
+      existing.total += total
+      existing.categorized += categorized
+    } else {
+      byYear.set(r.year, {
+        year: r.year,
+        total,
+        categorized,
+        progress: 0,
+        months: [monthStat],
+      })
+    }
+  }
+  // Progress per year is computed after the reduce so all months are counted.
+  const years: YearGroup[] = Array.from(byYear.values())
+    .map((y) => ({
+      ...y,
+      progress: y.total === 0 ? 100 : Math.round((y.categorized / y.total) * 100),
+    }))
+    .sort((a, b) => b.year - a.year)
+
+  // Flag counts — small, lighter than re-fetching pages.
+  const [mismatchedCount, uncategorizedIncomeCount] = await Promise.all([
+    prisma.bankTransaction.count({
+      where: {
+        userId,
+        type: "OUTFLOW",
+        taxType: "service_income",
+        ...(accountFilter ? { accountId: accountFilter } : {}),
+      },
+    }),
+    prisma.bankTransaction.count({
+      where: {
+        userId,
+        type: "INFLOW",
+        taxType: null,
+        ...(accountFilter ? { accountId: accountFilter } : {}),
+      },
+    }),
+  ])
+
+  return NextResponse.json({
+    success: true,
+    data: { years, mismatchedCount, uncategorizedIncomeCount },
+  })
+}
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -20,6 +138,22 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = session.user.id
+
+  // Route the sidebar view before parseAnalyticsParams — it uses simpler inputs.
+  if (request.nextUrl.searchParams.get("view") === "sidebar") {
+    try {
+      return await handleSidebarView(
+        userId,
+        request.nextUrl.searchParams.get("accountId")
+      )
+    } catch (err) {
+      console.error("Failed to fetch sidebar summary:", err)
+      return NextResponse.json(
+        { success: false, error: "Failed to fetch sidebar summary" },
+        { status: 500 }
+      )
+    }
+  }
 
   let startDate: Date
   let endDate: Date

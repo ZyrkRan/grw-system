@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
   try {
     const rules = await prisma.categorizationRule.findMany({
       where: { userId },
-      orderBy: { pattern: "asc" },
+      // Sort by applyCount desc so rules that fire often bubble to the top
+      // in the rule manager UI. Fallback on pattern for deterministic order.
+      orderBy: [{ applyCount: "desc" }, { pattern: "asc" }],
       include: {
         category: {
           select: { id: true, name: true, color: true },
@@ -55,27 +57,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { pattern, categoryId, applyToExisting } = parsed.data
+    const { pattern, categoryId, taxType, applyToExisting } = parsed.data
 
-    // Verify category belongs to user or is a default category
-    const category = await prisma.transactionCategory.findFirst({
-      where: {
-        id: categoryId,
-        OR: [{ userId }, { userId: null, isDefault: true }],
-      },
-    })
+    // Only verify category ownership when a non-null categoryId is provided.
+    // Rules can be taxType-only (categoryId null); those skip the check.
+    if (categoryId !== undefined && categoryId !== null) {
+      const category = await prisma.transactionCategory.findFirst({
+        where: {
+          id: categoryId,
+          OR: [{ userId }, { userId: null, isDefault: true }],
+        },
+      })
 
-    if (!category) {
-      return NextResponse.json(
-        { success: false, error: "Category not found" },
-        { status: 404 }
-      )
+      if (!category) {
+        return NextResponse.json(
+          { success: false, error: "Category not found" },
+          { status: 404 }
+        )
+      }
     }
 
     const rule = await prisma.categorizationRule.create({
       data: {
         pattern,
-        categoryId,
+        categoryId: categoryId ?? null,
+        taxType: taxType ?? null,
         userId,
       },
       include: {
@@ -85,11 +91,18 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Optionally apply the rule to existing uncategorized transactions
+    // Optionally apply the rule to existing uncategorized transactions.
+    // For a taxType-only rule, "uncategorized" means taxType IS NULL; for a
+    // category rule it means categoryId IS NULL (matching the legacy semantics).
     let appliedCount = 0
     if (applyToExisting) {
+      const whereClause =
+        categoryId !== undefined && categoryId !== null
+          ? { userId, categoryId: null }
+          : { userId, taxType: null }
       const uncategorized = await prisma.bankTransaction.findMany({
-        where: { userId, categoryId: null },
+        where: whereClause,
+        select: { id: true, description: true, merchantName: true },
       })
 
       const regex = new RegExp(pattern, "i")
@@ -107,9 +120,20 @@ export async function POST(request: NextRequest) {
       if (matchingIds.length > 0) {
         const result = await prisma.bankTransaction.updateMany({
           where: { id: { in: matchingIds } },
-          data: { categoryId },
+          data: {
+            ...(categoryId !== undefined && categoryId !== null ? { categoryId } : {}),
+            ...(taxType !== undefined ? { taxType } : {}),
+            isReviewed: true,
+          },
         })
         appliedCount = result.count
+        // Reflect the initial applyCount so the rule ranking picks this up.
+        if (appliedCount > 0) {
+          await prisma.categorizationRule.update({
+            where: { id: rule.id },
+            data: { applyCount: { increment: appliedCount } },
+          })
+        }
       }
     }
 

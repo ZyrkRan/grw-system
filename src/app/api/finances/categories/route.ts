@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { createCategorySchema, formatZodError } from "@/lib/validations/finances"
 import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 import { ensureSystemGroups } from "@/lib/system-categories"
+import { ensureIncomeGroups, INCOME_GROUP_SLUGS } from "@/lib/income-categories"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -34,9 +35,23 @@ export async function GET(request: NextRequest) {
     })
 
     // Ensure system groups exist if missing (rare — only on first-ever load)
-    if (!categories.some((c) => c.isSystemGroup)) {
-      await ensureSystemGroups(userId)
-      // Re-fetch with system groups now present
+    const needsSystemGroups = !categories.some((c) => c.isSystemGroup)
+
+    // Check whether the two Income subgroups exist anywhere in the tree.
+    const hasIncomeGroups = (() => {
+      let found = 0
+      const target = new Set<string>([INCOME_GROUP_SLUGS.business, INCOME_GROUP_SLUGS.personal])
+      const walk = (n: { slug: string; children?: { slug: string; children?: unknown[] }[] }) => {
+        if (target.has(n.slug)) found++
+        n.children?.forEach((c) => walk(c as typeof n))
+      }
+      categories.forEach((c) => walk(c as unknown as { slug: string; children?: { slug: string; children?: unknown[] }[] }))
+      return found >= 2
+    })()
+
+    if (needsSystemGroups || !hasIncomeGroups) {
+      if (needsSystemGroups) await ensureSystemGroups(userId)
+      await ensureIncomeGroups(userId)
       const updated = await prisma.transactionCategory.findMany({
         where: { parentId: null, OR: [{ userId }, { userId: null, isDefault: true }] },
         orderBy: { position: "asc" },

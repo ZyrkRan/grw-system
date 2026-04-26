@@ -10,6 +10,7 @@ import {
 } from "@/lib/validations/finances"
 import { checkRateLimit, rateLimits, rateLimitResponse } from "@/lib/rate-limit"
 import { resolveCategoryGroupIds } from "@/lib/category-group-filter"
+import { parseDateQuery, expandToRanges } from "@/lib/parse-date-query"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
   const {
     accountId, categoryId, type, dateFrom, dateTo,
     search, month, year, isPending, uncategorized,
+    monthKey, status, direction, categoryFilter,
     page, pageSize,
   } = parsed.data
 
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Parse dates with proper time boundaries to avoid timezone issues
-    let dateFilter = {}
+    let dateFilter: Prisma.BankTransactionWhereInput = {}
     if (dateFrom || dateTo) {
       const startDate = dateFrom ? new Date(dateFrom) : null
       const endDate = dateTo ? new Date(dateTo) : null
@@ -53,10 +55,68 @@ export async function GET(request: NextRequest) {
           ...(endDate && { lte: endDate }),
         },
       }
+    } else if (monthKey) {
+      // Tax-review style: monthKey=YYYY-MM → date window
+      const [yr, mo] = monthKey.split("-").map(Number)
+      const start = new Date(yr, mo - 1, 1)
+      const end = new Date(yr, mo, 1)
+      dateFilter = { date: { gte: start, lt: end } }
     }
+
+    // Tax-review status filter (operates on taxType + type)
+    const statusWhere: Prisma.BankTransactionWhereInput =
+      status === "uncategorized"
+        ? { taxType: null }
+        : status === "business"
+          ? { taxType: { in: ["business", "service_income"] } }
+          : status === "personal"
+            ? { taxType: "personal" }
+            : status === "mismatched"
+              ? { type: "OUTFLOW", taxType: "service_income" }
+              : {}
+
+    const directionWhere: Prisma.BankTransactionWhereInput =
+      direction === "inflow"
+        ? { type: "INFLOW" }
+        : direction === "outflow"
+          ? { type: "OUTFLOW" }
+          : {}
+
+    // categoryFilter: "none" = uncategorized, or specific categoryId as string
+    const categoryFilterWhere: Prisma.BankTransactionWhereInput =
+      categoryFilter === "none"
+        ? { categoryId: null }
+        : categoryFilter && !isNaN(parseInt(categoryFilter))
+          ? { categoryId: parseInt(categoryFilter) }
+          : {}
 
     // If filtering by category group (business/personal), find all category IDs in that group
     const categoryGroupIds = await resolveCategoryGroupIds(userId, categoryGroup)
+
+    // Free-text search with date parsing for cross-month lookups.
+    // Amount match requires a positive number; negative fallback covers
+    // credit-style accounts where amount is stored negative.
+    let searchWhere: Prisma.BankTransactionWhereInput = {}
+    if (search) {
+      const searchNum = parseFloat(search)
+      const dateMatch = parseDateQuery(search)
+      const dateOrClauses: Prisma.BankTransactionWhereInput[] = dateMatch
+        ? expandToRanges(dateMatch).map((r) => ({ date: { gte: r.gte, lt: r.lt } }))
+        : []
+      searchWhere = {
+        OR: [
+          { description: { contains: search, mode: "insensitive" as const } },
+          { merchantName: { contains: search, mode: "insensitive" as const } },
+          ...(!isNaN(searchNum)
+            ? [
+                { amount: searchNum } as Prisma.BankTransactionWhereInput,
+                { amount: -searchNum } as Prisma.BankTransactionWhereInput,
+              ]
+            : []),
+          ...dateOrClauses,
+        ],
+      }
+    }
 
     const where: Prisma.BankTransactionWhereInput = {
       userId,
@@ -65,29 +125,41 @@ export async function GET(request: NextRequest) {
       ...(categoryGroupIds && { categoryId: { in: categoryGroupIds } }),
       ...(type && { type }),
       ...dateFilter,
-      ...(search && {
-        OR: [
-          { description: { contains: search, mode: "insensitive" as const } },
-          { merchantName: { contains: search, mode: "insensitive" as const } },
-        ],
-      }),
+      ...searchWhere,
       ...(month && { statementMonth: month }),
       ...(year && { statementYear: year }),
       ...(isPending && { isPending: isPending === "true" }),
       ...(uncategorized === "true" && { categoryId: null }),
+      ...statusWhere,
+      ...directionWhere,
+      ...categoryFilterWhere,
     }
 
     const skip = (page - 1) * pageSize
 
+    // Tax-review tables sort ascending within a month; free-text search
+    // falls back to descending (most recent first).
+    const orderBy: Prisma.BankTransactionOrderByWithRelationInput =
+      monthKey && !search ? { date: "asc" } : { date: "desc" }
+
     const [transactions, total] = await Promise.all([
       prisma.bankTransaction.findMany({
         where,
-        orderBy: { date: "desc" },
+        orderBy,
         skip,
         take: pageSize,
         include: {
           account: { select: { id: true, name: true } },
-          category: { select: { id: true, name: true, color: true, attachmentPrompt: true } },
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              attachmentPrompt: true,
+              parentId: true,
+              parent: { select: { id: true, name: true, isSystemGroup: true } },
+            },
+          },
           serviceLog: { select: { id: true, serviceName: true } },
           _count: { select: { attachments: true } },
         },

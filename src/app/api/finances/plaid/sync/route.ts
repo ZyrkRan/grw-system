@@ -203,6 +203,10 @@ export async function POST(request: NextRequest) {
               const type = txn.amount < 0 ? "INFLOW" : "OUTFLOW"
 
               try {
+                // PRESERVE: never overwrite user-owned fields on Plaid modify.
+                // categoryId, taxType, isReviewed, notes, and attachments must
+                // stay as-is — the user's categorization work is sacrosanct.
+                // Only Plaid-sourced metadata is refreshed below.
                 await tx.bankTransaction.update({
                   where: { plaidTransactionId: txn.transaction_id },
                   data: {
@@ -363,39 +367,67 @@ async function applyCategorizationRules(userId: string, plaidTransactionIds: str
 
   if (rules.length === 0 || transactions.length === 0) return
 
-  // Pre-compile regexes once
   const compiledRules = rules.map((rule) => ({
+    id: rule.id,
     regex: new RegExp(rule.pattern, "i"),
     categoryId: rule.categoryId,
+    taxType: rule.taxType,
   }))
 
-  // Group transaction IDs by matching categoryId for batch updates
-  const categoryBatches = new Map<number, number[]>()
+  // Group matched transactions by (categoryId, taxType) for batch updates.
+  // A null categoryId means "taxType-only rule" — don't touch the existing
+  // categoryId when applying; just set taxType + isReviewed.
+  const bucketKey = (categoryId: number | null, taxType: string | null) =>
+    `${categoryId ?? "null"}|${taxType ?? ""}`
+  const buckets = new Map<
+    string,
+    { categoryId: number | null; taxType: string | null; ids: number[] }
+  >()
+  const ruleCounts = new Map<number, number>()
 
+  // Note: the findMany above restricts to categoryId: null, so a taxType-only
+  // rule here will match rows that have no category and leave them uncategorized
+  // while setting taxType. For rows that already have a category, those rules
+  // won't fire here anyway because of the WHERE filter — that's fine; the
+  // category stays as-is and taxType gets set by user action or autoCategorize
+  // called from other paths.
   for (const txn of transactions) {
     for (const rule of compiledRules) {
       if (
         rule.regex.test(txn.description) ||
         (txn.merchantName && rule.regex.test(txn.merchantName))
       ) {
-        const batch = categoryBatches.get(rule.categoryId)
-        if (batch) {
-          batch.push(txn.id)
+        const key = bucketKey(rule.categoryId, rule.taxType)
+        const existing = buckets.get(key)
+        if (existing) {
+          existing.ids.push(txn.id)
         } else {
-          categoryBatches.set(rule.categoryId, [txn.id])
+          buckets.set(key, { categoryId: rule.categoryId, taxType: rule.taxType, ids: [txn.id] })
         }
+        ruleCounts.set(rule.id, (ruleCounts.get(rule.id) ?? 0) + 1)
         break // first matching rule wins
       }
     }
   }
 
-  // Batch update — one query per category instead of one per transaction
-  await Promise.all(
-    Array.from(categoryBatches.entries()).map(([categoryId, ids]) =>
+  if (buckets.size === 0) return
+
+  await prisma.$transaction([
+    ...Array.from(buckets.values()).map((b) =>
       prisma.bankTransaction.updateMany({
-        where: { id: { in: ids } },
-        data: { categoryId },
+        where: { id: { in: b.ids } },
+        data: {
+          ...(b.categoryId !== null ? { categoryId: b.categoryId } : {}),
+          taxType: b.taxType,
+          isReviewed: true,
+        },
       })
-    )
-  )
+    ),
+    ...Array.from(ruleCounts.entries()).map(([ruleId, count]) =>
+      prisma.categorizationRule.update({
+        where: { id: ruleId },
+        data: { applyCount: { increment: count } },
+      })
+    ),
+  ])
 }
