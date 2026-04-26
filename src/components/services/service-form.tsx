@@ -396,6 +396,9 @@ export function ServiceForm({
             <PopoverContent
               className="w-[var(--radix-popover-trigger-width)] p-0"
               align="start"
+              side="bottom"
+              sideOffset={4}
+              avoidCollisions={false}
             >
               <Command>
                 <CommandInput placeholder="Search customers…" />
