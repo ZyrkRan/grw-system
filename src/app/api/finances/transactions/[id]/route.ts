@@ -102,7 +102,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             parent: { select: { id: true, name: true, isSystemGroup: true } },
           },
         },
-        serviceLog: { select: { id: true, serviceName: true } },
+        serviceLog: {
+          select: { id: true, serviceType: { select: { name: true } } },
+        },
       },
     })
 
@@ -136,7 +138,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
-    return NextResponse.json({ success: true, data: updated })
+    const enriched = updated.serviceLog
+      ? (() => {
+          const { serviceType, ...slRest } = updated.serviceLog!
+          return {
+            ...updated,
+            serviceLog: {
+              ...slRest,
+              serviceName: serviceType?.name ?? "Service",
+            },
+          }
+        })()
+      : updated
+
+    return NextResponse.json({ success: true, data: enriched })
   } catch (error) {
     console.error("Failed to update transaction:", error)
     return NextResponse.json(

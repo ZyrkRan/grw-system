@@ -235,13 +235,11 @@ async function importServiceLogs() {
   for (const sl of data) {
     const record = {
       customerId: sl.customerId,
-      serviceName: sl.serviceName,
       serviceDate: toDateRequired(sl.serviceDate),
       priceCharged: sl.priceCharged,
       notes: sl.notes ?? null,
       status: sl.status,
       paymentStatus: sl.paymentStatus,
-      amountPaid: sl.amountPaid,
       paymentDate: toDate(sl.paymentDate),
       serviceTypeId: sl.serviceTypeId ?? null,
       totalDurationMinutes: sl.totalDurationMinutes ?? null,

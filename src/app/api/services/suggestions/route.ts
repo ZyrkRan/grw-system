@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       where.AND = [
         {
           OR: [
-            { serviceName: { contains: search, mode: "insensitive" as const } },
+            { serviceType: { name: { contains: search, mode: "insensitive" as const } } },
             { customer: { name: { contains: search, mode: "insensitive" as const } } },
           ],
         },
@@ -72,17 +72,18 @@ export async function GET(request: NextRequest) {
       }
 
       // Name match (0-30 points)
+      const serviceName = log.serviceType?.name ?? "Service"
       if (merchantName) {
         const merchant = merchantName.toLowerCase()
         const customerName = log.customer.name.toLowerCase()
-        const serviceName = log.serviceName.toLowerCase()
+        const lowerServiceName = serviceName.toLowerCase()
         if (customerName.includes(merchant) || merchant.includes(customerName)) score += 30
-        else if (serviceName.includes(merchant) || merchant.includes(serviceName)) score += 20
+        else if (lowerServiceName.includes(merchant) || merchant.includes(lowerServiceName)) score += 20
       }
 
       return {
         id: log.id,
-        serviceName: log.serviceName,
+        serviceName,
         serviceDate: log.serviceDate,
         priceCharged: log.priceCharged,
         status: log.status,

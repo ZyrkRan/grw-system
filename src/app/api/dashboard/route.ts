@@ -95,9 +95,9 @@ export async function GET() {
         },
       }),
 
-      // Pending payment amount (sum of priceCharged - amountPaid)
+      // Pending payment amount — full priceCharged on UNPAID logs (paid is all-or-nothing)
       prisma.serviceLog.aggregate({
-        _sum: { priceCharged: true, amountPaid: true },
+        _sum: { priceCharged: true },
         where: {
           userId,
           paymentStatus: "UNPAID",
@@ -117,9 +117,8 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: 10,
         include: {
-          customer: {
-            select: { name: true },
-          },
+          customer: { select: { name: true } },
+          serviceType: { select: { name: true } },
         },
       }),
 
@@ -168,11 +167,7 @@ export async function GET() {
     ])
 
     // Calculate pending payment amount
-    const pendingPriceCharged = Number(
-      pendingPaymentAgg._sum.priceCharged || 0
-    )
-    const pendingAmountPaid = Number(pendingPaymentAgg._sum.amountPaid || 0)
-    const pendingPaymentAmount = pendingPriceCharged - pendingAmountPaid
+    const pendingPaymentAmount = Number(pendingPaymentAgg._sum.priceCharged || 0)
 
     // Format invoices by status into an object
     const invoiceStatusMap: Record<string, number> = {
@@ -199,7 +194,7 @@ export async function GET() {
         invoicesByStatus: invoiceStatusMap,
         recentActivity: recentActivity.map((log) => ({
           id: log.id,
-          serviceName: log.serviceName,
+          serviceName: log.serviceType?.name ?? "Service",
           serviceDate: log.serviceDate,
           status: log.status,
           paymentStatus: log.paymentStatus,

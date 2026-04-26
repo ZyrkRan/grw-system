@@ -41,7 +41,6 @@ interface ServiceLog {
   notes: string | null
   status: string
   paymentStatus: string
-  amountPaid: number | string | null
   paymentDate: string | null
   serviceTypeId: number | null
   totalDurationMinutes: number | null
@@ -267,23 +266,12 @@ export function ServiceLogTable() {
     },
     {
       key: "priceCharged",
-      label: "Price",
+      label: "Revenue",
       className: "text-right",
       sortValue: (row) => Number(row.priceCharged),
       render: (_, row) => (
         <span className="whitespace-nowrap">
           {formatCurrency(row.priceCharged)}
-        </span>
-      ),
-    },
-    {
-      key: "amountPaid",
-      label: "Paid",
-      className: "text-right",
-      sortValue: (row) => Number(row.amountPaid ?? 0),
-      render: (_, row) => (
-        <span className="whitespace-nowrap">
-          {formatCurrency(row.amountPaid)}
         </span>
       ),
     },

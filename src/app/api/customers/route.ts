@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
           take: 1,
           select: {
             serviceDate: true,
-            serviceName: true,
             priceCharged: true,
             serviceTypeId: true,
             serviceType: { select: { id: true, name: true, icon: true } },
@@ -68,7 +67,7 @@ export async function GET(request: NextRequest) {
         routes: routeCustomers.map((rc) => rc.route),
         lastService: lastLog
           ? {
-              serviceName: lastLog.serviceName,
+              serviceName: lastLog.serviceType?.name ?? "Service",
               priceCharged: Number(lastLog.priceCharged),
               serviceTypeId: lastLog.serviceTypeId,
               serviceType: lastLog.serviceType,

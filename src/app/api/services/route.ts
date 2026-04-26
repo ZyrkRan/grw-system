@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       where.AND = [
         {
           OR: [
-            { serviceName: { contains: search, mode: "insensitive" as const } },
+            { serviceType: { name: { contains: search, mode: "insensitive" as const } } },
             { notes: { contains: search, mode: "insensitive" as const } },
           ],
         },
@@ -90,8 +90,12 @@ export async function GET(request: NextRequest) {
     const data = serviceLogs.map((log) => {
       const { serviceLogs: custLogs, serviceInterval, ...custRest } = log.customer
       const dueInfo = computeDueDateInfo(custLogs[0]?.serviceDate, serviceInterval)
+      const serviceName = log.serviceType?.name ?? "Service"
+      const amountPaid = log.paymentStatus === "PAID" ? Number(log.priceCharged) : 0
       return {
         ...log,
+        serviceName,
+        amountPaid,
         customer: { ...custRest, ...dueInfo },
       }
     })
@@ -116,22 +120,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const {
       customerId,
-      serviceName,
       serviceDate,
       priceCharged,
       notes,
       status,
       paymentStatus,
-      amountPaid,
       paymentDate,
       serviceTypeId,
       totalDurationMinutes,
       timeEntries,
     } = body
 
-    if (!customerId || !serviceName || !serviceDate || priceCharged === undefined) {
+    if (!customerId || !serviceDate || priceCharged === undefined) {
       return NextResponse.json(
-        { success: false, error: "customerId, serviceName, serviceDate, and priceCharged are required" },
+        { success: false, error: "customerId, serviceDate, and priceCharged are required" },
         { status: 400 }
       )
     }
@@ -149,13 +151,11 @@ export async function POST(request: NextRequest) {
       const created = await tx.serviceLog.create({
         data: {
           customerId: parseInt(String(customerId), 10),
-          serviceName: serviceName.trim(),
           serviceDate: new Date(serviceDate),
           priceCharged,
           notes: notes?.trim() || null,
           status: status || undefined,
           paymentStatus: paymentStatus || undefined,
-          amountPaid: amountPaid ?? 0,
           paymentDate: paymentDate ? new Date(paymentDate) : null,
           serviceTypeId: serviceTypeId ? parseInt(String(serviceTypeId), 10) : null,
           totalDurationMinutes: calculatedDuration ?? null,
@@ -186,7 +186,13 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    return NextResponse.json({ success: true, data: serviceLog }, { status: 201 })
+    const enriched = serviceLog && {
+      ...serviceLog,
+      serviceName: serviceLog.serviceType?.name ?? "Service",
+      amountPaid: serviceLog.paymentStatus === "PAID" ? Number(serviceLog.priceCharged) : 0,
+    }
+
+    return NextResponse.json({ success: true, data: enriched }, { status: 201 })
   } catch (error) {
     console.error("Failed to create service log:", error)
     return NextResponse.json(

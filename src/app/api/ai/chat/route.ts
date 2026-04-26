@@ -125,10 +125,8 @@ export async function POST(request: NextRequest) {
       prisma.serviceLog.findMany({
         where: { userId, serviceDate: { gte: threeMonthsAgo } },
         select: {
-          serviceName: true,
           serviceDate: true,
           priceCharged: true,
-          amountPaid: true,
           status: true,
           paymentStatus: true,
           totalDurationMinutes: true,
@@ -142,16 +140,16 @@ export async function POST(request: NextRequest) {
       // Revenue by service type (last 3 months)
       prisma.$queryRaw<{ service_type: string; count: number; total_charged: number; total_paid: number; avg_duration: number | null }[]>`
         SELECT
-          COALESCE(st.name, sl."serviceName") as service_type,
+          COALESCE(st.name, 'Service') as service_type,
           COUNT(*)::int as count,
           COALESCE(SUM(sl."priceCharged"), 0)::float as total_charged,
-          COALESCE(SUM(sl."amountPaid"), 0)::float as total_paid,
+          COALESCE(SUM(CASE WHEN sl."paymentStatus" = 'PAID' THEN sl."priceCharged" ELSE 0 END), 0)::float as total_paid,
           AVG(sl."totalDurationMinutes")::float as avg_duration
         FROM "ServiceLog" sl
         LEFT JOIN "ServiceType" st ON sl."serviceTypeId" = st.id
         WHERE sl."userId" = ${userId}
           AND sl."serviceDate" >= ${threeMonthsAgo}
-        GROUP BY COALESCE(st.name, sl."serviceName")
+        GROUP BY COALESCE(st.name, 'Service')
         ORDER BY total_charged DESC
       `,
 
@@ -159,11 +157,10 @@ export async function POST(request: NextRequest) {
       prisma.serviceLog.findMany({
         where: { userId, paymentStatus: "UNPAID", status: "COMPLETE" },
         select: {
-          serviceName: true,
           serviceDate: true,
           priceCharged: true,
-          amountPaid: true,
           customer: { select: { name: true } },
+          serviceType: { select: { name: true } },
         },
         orderBy: { serviceDate: "asc" },
         take: 20,
@@ -175,7 +172,7 @@ export async function POST(request: NextRequest) {
           c.name as customer_name,
           COUNT(*)::int as service_count,
           COALESCE(SUM(sl."priceCharged"), 0)::float as total_charged,
-          COALESCE(SUM(sl."amountPaid"), 0)::float as total_paid
+          COALESCE(SUM(CASE WHEN sl."paymentStatus" = 'PAID' THEN sl."priceCharged" ELSE 0 END), 0)::float as total_paid
         FROM "ServiceLog" sl
         JOIN "Customer" c ON sl."customerId" = c.id
         WHERE sl."userId" = ${userId}
@@ -191,7 +188,7 @@ export async function POST(request: NextRequest) {
           TO_CHAR("serviceDate", 'YYYY-MM') as month,
           COUNT(*)::int as jobs,
           COALESCE(SUM("priceCharged"), 0)::float as total_charged,
-          COALESCE(SUM("amountPaid"), 0)::float as total_paid
+          COALESCE(SUM(CASE WHEN "paymentStatus" = 'PAID' THEN "priceCharged" ELSE 0 END), 0)::float as total_paid
         FROM "ServiceLog"
         WHERE "userId" = ${userId}
           AND "serviceDate" >= ${threeMonthsAgo}
@@ -219,7 +216,7 @@ export async function POST(request: NextRequest) {
       }),
     ])
 
-    const unpaidTotal = unpaidServices.reduce((sum, s) => sum + (Number(s.priceCharged) - Number(s.amountPaid)), 0)
+    const unpaidTotal = unpaidServices.reduce((sum, s) => sum + Number(s.priceCharged), 0)
     const currentMonth = now.toLocaleDateString("en-US", { month: "long", year: "numeric" })
 
     const contextSummary = `
@@ -263,10 +260,10 @@ TOP CUSTOMERS BY REVENUE (customers who paid the user for services):
 ${topCustomers.map((c) => `- ${c.customer_name}: ${c.service_count} jobs, $${c.total_charged.toFixed(2)} charged, $${c.total_paid.toFixed(2)} collected`).join("\n") || "No customer data."}
 
 UNPAID COMPLETED SERVICES (money customers still OWE the user): ${unpaidServices.length} services, $${unpaidTotal.toFixed(2)} outstanding
-${unpaidServices.map((s) => `- ${s.customer.name} — ${s.serviceName} on ${s.serviceDate.toLocaleDateString()}: $${(Number(s.priceCharged) - Number(s.amountPaid)).toFixed(2)} remaining`).join("\n") || "All services paid."}
+${unpaidServices.map((s) => `- ${s.customer.name} — ${s.serviceType?.name ?? "Service"} on ${s.serviceDate.toLocaleDateString()}: $${Number(s.priceCharged).toFixed(2)} remaining`).join("\n") || "All services paid."}
 
 RECENT SERVICE LOG (last 50 jobs):
-${recentServices.map((s) => `- ${s.serviceDate.toLocaleDateString()}: ${s.customer.name} — ${s.serviceName}${s.serviceType ? ` [${s.serviceType.name}]` : ""}, $${Number(s.priceCharged).toFixed(2)} charged (${s.paymentStatus}${s.totalDurationMinutes ? `, ${s.totalDurationMinutes} min` : ""})`).join("\n") || "No recent services."}
+${recentServices.map((s) => `- ${s.serviceDate.toLocaleDateString()}: ${s.customer.name} — ${s.serviceType?.name ?? "Service"}, $${Number(s.priceCharged).toFixed(2)} charged (${s.paymentStatus}${s.totalDurationMinutes ? `, ${s.totalDurationMinutes} min` : ""})`).join("\n") || "No recent services."}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SECTION 3 — ACCOUNTS, INVOICES & BILLS

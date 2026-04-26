@@ -39,7 +39,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: "Service log not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, data: serviceLog })
+    const enriched = {
+      ...serviceLog,
+      serviceName: serviceLog.serviceType?.name ?? "Service",
+      amountPaid:
+        serviceLog.paymentStatus === "PAID" ? Number(serviceLog.priceCharged) : 0,
+    }
+
+    return NextResponse.json({ success: true, data: enriched })
   } catch (error) {
     console.error("Failed to fetch service log:", error)
     return NextResponse.json(
@@ -80,13 +87,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const body = await request.json()
     const {
       customerId,
-      serviceName,
       serviceDate,
       priceCharged,
       notes,
       status,
       paymentStatus,
-      amountPaid,
       paymentDate,
       serviceTypeId,
       totalDurationMinutes,
@@ -127,13 +132,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         where: { id: serviceLogId },
         data: {
           ...(customerId !== undefined && { customerId: parseInt(String(customerId), 10) }),
-          ...(serviceName !== undefined && { serviceName: serviceName.trim() }),
           ...(serviceDate !== undefined && { serviceDate: new Date(serviceDate) }),
           ...(priceCharged !== undefined && { priceCharged }),
           ...(notes !== undefined && { notes: notes?.trim() || null }),
           ...(status !== undefined && { status }),
           ...(paymentStatus !== undefined && { paymentStatus }),
-          ...(amountPaid !== undefined && { amountPaid }),
           ...(paymentDate !== undefined && { paymentDate: paymentDate ? new Date(paymentDate) : null }),
           ...(serviceTypeId !== undefined && {
             serviceTypeId: serviceTypeId ? parseInt(String(serviceTypeId), 10) : null,
@@ -152,7 +155,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return updated
     })
 
-    return NextResponse.json({ success: true, data: serviceLog })
+    const enriched = {
+      ...serviceLog,
+      serviceName: serviceLog.serviceType?.name ?? "Service",
+      amountPaid:
+        serviceLog.paymentStatus === "PAID" ? Number(serviceLog.priceCharged) : 0,
+    }
+
+    return NextResponse.json({ success: true, data: enriched })
   } catch (error) {
     console.error("Failed to update service log:", error)
     return NextResponse.json(

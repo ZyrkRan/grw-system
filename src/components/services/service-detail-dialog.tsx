@@ -26,7 +26,6 @@ interface ServiceDetailData {
   notes: string | null
   status: string
   paymentStatus: string
-  amountPaid: number | string | null
   paymentDate: string | null
   customer: { id: number; name: string }
   serviceType: { id: number; name: string; icon: string | null } | null
@@ -136,14 +135,9 @@ export function ServiceDetailDialog({
               </Badge>
             </div>
 
-            <div className="text-muted-foreground">Price Charged</div>
+            <div className="text-muted-foreground">Revenue</div>
             <div className="font-medium">
               {formatCurrency(service.priceCharged)}
-            </div>
-
-            <div className="text-muted-foreground">Amount Paid</div>
-            <div className="font-medium">
-              {formatCurrency(service.amountPaid)}
             </div>
 
             {service.paymentDate && (

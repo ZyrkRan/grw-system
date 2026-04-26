@@ -73,7 +73,7 @@ export default function CustomersPage() {
   const [deleteError, setDeleteError] = useState("")
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false)
   const [quickAddService, setQuickAddService] = useState<
-    { customerId: number; serviceTypeId: number | null; serviceName: string; serviceDate: string; priceCharged: number | string; notes: null; status: string; paymentStatus: string; amountPaid: null; paymentDate: null } | undefined
+    { customerId: number; serviceTypeId: number | null; serviceDate: string; priceCharged: number | string; notes: null; status: string; paymentStatus: string; paymentDate: null } | undefined
   >(undefined)
 
   const fetchCustomers = useCallback(async () => {
@@ -170,13 +170,11 @@ export default function CustomersPage() {
     setQuickAddService({
       customerId: customer.id,
       serviceTypeId: ls?.serviceTypeId ?? null,
-      serviceName: ls?.serviceName ?? "",
       serviceDate: new Date().toISOString(),
       priceCharged: ls ? ls.priceCharged : "",
       notes: null,
       status: "PENDING",
       paymentStatus: "UNPAID",
-      amountPaid: null,
       paymentDate: null,
     })
     setServiceDialogOpen(true)

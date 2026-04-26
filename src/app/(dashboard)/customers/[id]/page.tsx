@@ -174,8 +174,7 @@ export default async function CustomerDetailPage({
                     <TableHead>Service</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Payment</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -185,7 +184,7 @@ export default async function CustomerDetailPage({
                         {new Date(log.serviceDate).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {log.serviceName}
+                        {log.serviceType?.name ?? "Service"}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -209,9 +208,6 @@ export default async function CustomerDetailPage({
                       </TableCell>
                       <TableCell className="text-right">
                         ${Number(log.priceCharged).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        ${Number(log.amountPaid).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))}

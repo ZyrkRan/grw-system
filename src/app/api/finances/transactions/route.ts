@@ -160,16 +160,30 @@ export async function GET(request: NextRequest) {
               parent: { select: { id: true, name: true, isSystemGroup: true } },
             },
           },
-          serviceLog: { select: { id: true, serviceName: true } },
+          serviceLog: {
+            select: { id: true, serviceType: { select: { name: true } } },
+          },
           _count: { select: { attachments: true } },
         },
       }),
       prisma.bankTransaction.count({ where }),
     ])
 
+    const enriched = transactions.map((t) => {
+      if (!t.serviceLog) return t
+      const { serviceType, ...slRest } = t.serviceLog
+      return {
+        ...t,
+        serviceLog: {
+          ...slRest,
+          serviceName: serviceType?.name ?? "Service",
+        },
+      }
+    })
+
     return NextResponse.json({
       success: true,
-      data: transactions,
+      data: enriched,
       pagination: {
         page,
         pageSize,

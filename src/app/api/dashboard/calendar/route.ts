@@ -30,11 +30,11 @@ export async function GET(request: NextRequest) {
         },
         select: {
           id: true,
-          serviceName: true,
           serviceDate: true,
           status: true,
           priceCharged: true,
           customer: { select: { id: true, name: true } },
+          serviceType: { select: { name: true } },
         },
         orderBy: { serviceDate: "asc" },
         take: 200,
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         services: serviceLogs.map((s) => ({
           id: s.id,
           type: "service" as const,
-          title: s.serviceName,
+          title: s.serviceType?.name ?? "Service",
           date: s.serviceDate.toISOString(),
           status: s.status,
           customerName: s.customer.name,

@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { QuickServiceLog } from "@/components/dashboard/quick-service-log"
 import type { CalendarEvent } from "@/components/dashboard/calendar-view"
 
 const CalendarView = dynamic(
@@ -123,6 +124,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Dashboard</h1>
+
+      {/* Quick add — log a service in seconds */}
+      <QuickServiceLog onSuccess={fetchDashboard} />
 
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

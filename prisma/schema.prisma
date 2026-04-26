@@ -133,13 +133,11 @@ model ServiceType {
 model ServiceLog {
   id                   Int           @id @default(autoincrement())
   customerId           Int
-  serviceName          String
   serviceDate          DateTime
   priceCharged         Decimal       @db.Decimal(10, 2)
   notes                String?
   status               ServiceStatus @default(PENDING)
   paymentStatus        PaymentStatus @default(UNPAID)
-  amountPaid           Decimal       @db.Decimal(10, 2) @default(0)
   paymentDate          DateTime?
   serviceTypeId        Int?
   totalDurationMinutes Int?

@@ -41,7 +41,9 @@ async function main() {
           parent: { select: { id: true, name: true, isSystemGroup: true } },
         },
       },
-      serviceLog: { select: { id: true, serviceName: true } },
+      serviceLog: {
+        select: { id: true, serviceType: { select: { name: true } } },
+      },
       _count: { select: { attachments: true } },
     },
   })

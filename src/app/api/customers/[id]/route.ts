@@ -41,7 +41,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: "Customer not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, data: customer })
+    const enriched = {
+      ...customer,
+      serviceLogs: customer.serviceLogs.map((log) => ({
+        ...log,
+        serviceName: log.serviceType?.name ?? "Service",
+        amountPaid:
+          log.paymentStatus === "PAID" ? Number(log.priceCharged) : 0,
+      })),
+    }
+
+    return NextResponse.json({ success: true, data: enriched })
   } catch (error) {
     console.error("Failed to fetch customer:", error)
     return NextResponse.json(
