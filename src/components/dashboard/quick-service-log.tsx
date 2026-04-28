@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { ChevronDown, Wrench } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -11,25 +11,13 @@ import {
 import { ServiceForm } from "@/components/services/service-form"
 import { cn } from "@/lib/utils"
 
-const LS_QSL_OPEN = "dashboard-quick-service-log-open"
-
 export function QuickServiceLog({
   onSuccess,
 }: {
   onSuccess?: () => void
 }) {
-  const [open, setOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true
-    const stored = localStorage.getItem(LS_QSL_OPEN)
-    return stored === null ? true : stored === "1"
-  })
-
+  const [open, setOpen] = useState(false)
   const [resetKey, setResetKey] = useState(0)
-
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    localStorage.setItem(LS_QSL_OPEN, open ? "1" : "0")
-  }, [open])
 
   return (
     <Card>
