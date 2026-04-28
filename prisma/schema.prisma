@@ -19,6 +19,13 @@ enum PaymentStatus {
   PAID
 }
 
+enum PaymentMethod {
+  ATH
+  PAYPAL
+  CASH
+  OTHER
+}
+
 enum InvoiceStatus {
   DRAFT
   SENT
@@ -138,6 +145,7 @@ model ServiceLog {
   notes                String?
   status               ServiceStatus @default(PENDING)
   paymentStatus        PaymentStatus @default(UNPAID)
+  paymentMethod        PaymentMethod?
   paymentDate          DateTime?
   serviceTypeId        Int?
   totalDurationMinutes Int?

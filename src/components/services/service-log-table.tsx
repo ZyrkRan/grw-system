@@ -41,6 +41,7 @@ interface ServiceLog {
   notes: string | null
   status: string
   paymentStatus: string
+  paymentMethod: string | null
   paymentDate: string | null
   serviceTypeId: number | null
   totalDurationMinutes: number | null

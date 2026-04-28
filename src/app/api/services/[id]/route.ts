@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { PaymentMethod } from "@/generated/prisma"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -92,11 +93,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       notes,
       status,
       paymentStatus,
+      paymentMethod,
       paymentDate,
       serviceTypeId,
       totalDurationMinutes,
       timeEntries,
     } = body
+
+    const paymentMethodProvided = paymentMethod !== undefined
+    const normalizedPaymentMethod =
+      paymentMethod &&
+      Object.values(PaymentMethod).includes(paymentMethod as PaymentMethod)
+        ? (paymentMethod as PaymentMethod)
+        : null
 
     const serviceLog = await prisma.$transaction(async (tx) => {
       // If timeEntries provided, replace them all
@@ -137,6 +146,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ...(notes !== undefined && { notes: notes?.trim() || null }),
           ...(status !== undefined && { status }),
           ...(paymentStatus !== undefined && { paymentStatus }),
+          ...(paymentMethodProvided && {
+            paymentMethod:
+              (paymentStatus !== undefined
+                ? paymentStatus === "PAID"
+                : existing.paymentStatus === "PAID")
+                ? normalizedPaymentMethod
+                : null,
+          }),
+          ...(paymentStatus === "UNPAID" && { paymentMethod: null }),
           ...(paymentDate !== undefined && { paymentDate: paymentDate ? new Date(paymentDate) : null }),
           ...(serviceTypeId !== undefined && {
             serviceTypeId: serviceTypeId ? parseInt(String(serviceTypeId), 10) : null,

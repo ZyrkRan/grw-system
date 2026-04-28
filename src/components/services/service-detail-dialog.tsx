@@ -26,10 +26,18 @@ interface ServiceDetailData {
   notes: string | null
   status: string
   paymentStatus: string
+  paymentMethod: string | null
   paymentDate: string | null
   customer: { id: number; name: string }
   serviceType: { id: number; name: string; icon: string | null } | null
   timeEntries: TimeEntry[]
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  ATH: "ATH Móvil",
+  PAYPAL: "PayPal",
+  CASH: "Cash",
+  OTHER: "Other",
 }
 
 interface ServiceDetailDialogProps {
@@ -139,6 +147,16 @@ export function ServiceDetailDialog({
             <div className="font-medium">
               {formatCurrency(service.priceCharged)}
             </div>
+
+            {service.paymentMethod && (
+              <>
+                <div className="text-muted-foreground">Method</div>
+                <div className="font-medium">
+                  {PAYMENT_METHOD_LABELS[service.paymentMethod] ??
+                    service.paymentMethod}
+                </div>
+              </>
+            )}
 
             {service.paymentDate && (
               <>

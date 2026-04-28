@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { ServiceStatus, PaymentStatus } from "@/generated/prisma"
+import { ServiceStatus, PaymentStatus, PaymentMethod } from "@/generated/prisma"
 import { computeDueDateInfo } from "@/lib/due-date"
 
 export async function GET(request: NextRequest) {
@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
       notes,
       status,
       paymentStatus,
+      paymentMethod,
       paymentDate,
       serviceTypeId,
       totalDurationMinutes,
@@ -137,6 +138,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const normalizedPaymentMethod =
+      paymentMethod &&
+      Object.values(PaymentMethod).includes(paymentMethod as PaymentMethod)
+        ? (paymentMethod as PaymentMethod)
+        : null
 
     // Calculate totalDurationMinutes from timeEntries if provided
     let calculatedDuration = totalDurationMinutes
@@ -156,6 +163,8 @@ export async function POST(request: NextRequest) {
           notes: notes?.trim() || null,
           status: status || undefined,
           paymentStatus: paymentStatus || undefined,
+          paymentMethod:
+            paymentStatus === "PAID" ? normalizedPaymentMethod : null,
           paymentDate: paymentDate ? new Date(paymentDate) : null,
           serviceTypeId: serviceTypeId ? parseInt(String(serviceTypeId), 10) : null,
           totalDurationMinutes: calculatedDuration ?? null,
